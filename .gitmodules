@@ -1,0 +1,15 @@
+[submodule "references/claude-agent-sdk-python"]
+	path = references/claude-agent-sdk-python
+	url = https://github.com/anthropics/claude-agent-sdk-python
+
+[submodule "references/goose"]
+	path = references/goose
+	url = https://github.com/block/goose
+
+[submodule "references/lima"]
+	path = references/lima
+	url = https://github.com/lima-vm/lima
+
+[submodule "references/podman"]
+	path = references/podman
+	url = https://github.com/containers/podman

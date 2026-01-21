@@ -1,0 +1,49 @@
+package runnerd
+
+import (
+	"encoding/json"
+	"net/http"
+)
+
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /v1/system/status", s.withAuth(s.handleSystemStatus))
+	mux.HandleFunc("GET /v1/system/paths", s.withAuth(s.handleSystemPaths))
+	mux.HandleFunc("POST /v1/system/vm/restart", s.withAuth(s.handleVMRestart))
+
+	mux.HandleFunc("GET /v1/shares", s.withAuth(s.handleSharesList))
+	mux.HandleFunc("POST /v1/shares", s.withAuth(s.handleSharesAdd))
+	mux.HandleFunc("DELETE /v1/shares/{share_id}", s.withAuth(s.handleSharesDelete))
+
+	mux.HandleFunc("POST /v1/images/pull", s.withAuth(s.handleImagesPull))
+	mux.HandleFunc("POST /v1/images/import", s.withAuth(s.handleImagesImport))
+	mux.HandleFunc("GET /v1/images", s.withAuth(s.handleImagesList))
+
+	mux.HandleFunc("POST /v1/services", s.withAuth(s.handleServicesCreate))
+	mux.HandleFunc("GET /v1/services", s.withAuth(s.handleServicesList))
+	mux.HandleFunc("GET /v1/services/{service_id}", s.withAuth(s.handleServicesGet))
+	mux.HandleFunc("DELETE /v1/services/{service_id}", s.withAuth(s.handleServicesDelete))
+	mux.HandleFunc("POST /v1/services/{service_id}/snapshot", s.withAuth(s.handleServicesSnapshot))
+
+	// ASP (v1: WebSocket)
+	mux.HandleFunc("GET /v1/services/{service_id}/chat", s.withAuth(s.handleServiceChatWS))
+
+	return mux
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, code, message string, details any) {
+	writeJSON(w, status, map[string]any{
+		"error": map[string]any{
+			"code":    code,
+			"message": message,
+			"details": details,
+		},
+	})
+}

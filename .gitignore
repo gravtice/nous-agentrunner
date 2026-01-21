@@ -1,0 +1,46 @@
+# macOS
+.DS_Store
+*.dSYM/
+
+# Xcode / SwiftPM
+DerivedData/
+*.xcuserstate
+*.xcworkspace/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/
+.swiftpm/
+.build/
+
+# Go (project outputs)
+/dist/
+*.test
+*.out
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+services/**/build/
+services/**/dist/
+
+# Node (some references may include JS tooling)
+node_modules/
+
+# IDEs
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# dotenv (local only)
+.env.local
+.env.*.local
+
+# Vendored reference repos should not carry their own git metadata
+references/**/.git
