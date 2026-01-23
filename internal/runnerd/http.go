@@ -8,6 +8,7 @@ import (
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
+	// ASMP (v1: HTTP/JSON)
 	mux.HandleFunc("GET /v1/system/status", s.withAuth(s.handleSystemStatus))
 	mux.HandleFunc("GET /v1/system/paths", s.withAuth(s.handleSystemPaths))
 	mux.HandleFunc("POST /v1/system/vm/restart", s.withAuth(s.handleVMRestart))
