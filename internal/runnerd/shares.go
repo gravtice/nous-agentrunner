@@ -21,6 +21,7 @@ func normalizeShares(in []Share, defaultSharedTmp string) (changed bool, out []s
 		if hostPath == "" {
 			return nil
 		}
+		hostPath = filepath.Clean(hostPath)
 		if !filepath.IsAbs(hostPath) {
 			return fmt.Errorf("share host_path must be absolute: %q", hostPath)
 		}
@@ -138,6 +139,25 @@ func (s *Server) findShareByID(id string) (int, shareEntry, bool) {
 }
 
 func (s *Server) validateAllowedPath(path string) (string, shareEntry, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" || !filepath.IsAbs(path) {
+		return "", shareEntry{}, false
+	}
+	path = filepath.Clean(path)
+
+	// Ensure the caller is using a path that exists inside the Guest/Container mount namespace
+	// (i.e., under some share's mountPoint/HostPath). Canonical checks are for security; this is for usability.
+	inMountNS := false
+	for _, e := range s.shares {
+		if hasPathPrefix(path, filepath.Clean(e.HostPath)) {
+			inMountNS = true
+			break
+		}
+	}
+	if !inMountNS {
+		return "", shareEntry{}, false
+	}
+
 	canon, err := canonicalizeExistingPath(path)
 	if err != nil {
 		return "", shareEntry{}, false
@@ -172,6 +192,7 @@ func (s *Server) handleSharesAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.HostPath = strings.TrimSpace(req.HostPath)
+	req.HostPath = filepath.Clean(req.HostPath)
 	if req.HostPath == "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "host_path is required", nil)
 		return

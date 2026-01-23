@@ -51,7 +51,7 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	canonRW, err := s.validateAndPrepareRWMounts(req.RWMounts)
+	rwMounts, err := s.validateAndPrepareRWMounts(req.RWMounts)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "PATH_NOT_ALLOWED", err.Error(), nil)
 		return
@@ -79,12 +79,12 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("services.create: start service_id=%s type=%s image_ref=%s rw_mounts=%d env=%d", serviceID, req.Type, req.ImageRef, len(canonRW), len(env))
+	log.Printf("services.create: start service_id=%s type=%s image_ref=%s rw_mounts=%d env=%d", serviceID, req.Type, req.ImageRef, len(rwMounts), len(env))
 
 	s.mu.Lock()
 	shares := make([]string, 0, len(s.shares))
 	for _, e := range s.shares {
-		shares = append(shares, e.CanonicalHostPath)
+		shares = append(shares, filepath.Clean(e.HostPath))
 	}
 	s.mu.Unlock()
 
@@ -106,7 +106,7 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		"image_ref":          req.ImageRef,
 		"resources":          req.Resources,
 		"shares":             shares,
-		"rw_mounts":          canonRW,
+		"rw_mounts":          rwMounts,
 		"env":                env,
 		"service_config_b64": payload,
 		"max_inline_bytes":   s.cfg.MaxInlineBytes,
@@ -253,6 +253,7 @@ func (s *Server) validateAndPrepareRWMounts(rw []string) ([]string, error) {
 		if p == "" {
 			continue
 		}
+		p = filepath.Clean(p)
 		if !filepath.IsAbs(p) {
 			return nil, fmt.Errorf("rw_mount must be absolute: %q", p)
 		}
@@ -261,14 +262,26 @@ func (s *Server) validateAndPrepareRWMounts(rw []string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("rw_mount cannot be canonicalized: %q", p)
 		}
-		allowed := false
+
+		allowedMountNS := false
 		for _, e := range shares {
-			if hasPathPrefix(canonIntended, e.CanonicalHostPath) {
-				allowed = true
+			if hasPathPrefix(p, filepath.Clean(e.HostPath)) {
+				allowedMountNS = true
 				break
 			}
 		}
-		if !allowed {
+		if !allowedMountNS {
+			return nil, fmt.Errorf("rw_mount not allowed: %q", p)
+		}
+
+		allowedCanon := false
+		for _, e := range shares {
+			if hasPathPrefix(canonIntended, e.CanonicalHostPath) {
+				allowedCanon = true
+				break
+			}
+		}
+		if !allowedCanon {
 			return nil, fmt.Errorf("rw_mount not allowed: %q", p)
 		}
 
@@ -281,17 +294,17 @@ func (s *Server) validateAndPrepareRWMounts(rw []string) ([]string, error) {
 			return nil, fmt.Errorf("rw_mount cannot be canonicalized: %q", p)
 		}
 		// Safety: re-check after creation; avoid accidentally writing outside shares.
-		allowed = false
+		allowedCanon = false
 		for _, e := range shares {
 			if hasPathPrefix(canon, e.CanonicalHostPath) {
-				allowed = true
+				allowedCanon = true
 				break
 			}
 		}
-		if !allowed {
+		if !allowedCanon {
 			return nil, fmt.Errorf("rw_mount not allowed: %q", p)
 		}
-		out = append(out, canon)
+		out = append(out, p)
 	}
 	return out, nil
 }

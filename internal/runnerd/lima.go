@@ -390,7 +390,8 @@ func buildLimaYAML(cfg Config, shares []shareEntry) string {
 		b.WriteString("- location: ")
 		b.WriteString(yamlQuote(e.CanonicalHostPath))
 		b.WriteString("\n  mountPoint: ")
-		b.WriteString(yamlQuote(e.CanonicalHostPath))
+		// Preserve the original host path in the guest for path transparency (/Users/... stays /Users/...).
+		b.WriteString(yamlQuote(filepath.Clean(e.HostPath)))
 		b.WriteString("\n  writable: true\n")
 	}
 	return b.String()

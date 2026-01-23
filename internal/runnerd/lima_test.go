@@ -36,6 +36,9 @@ func TestM1_BuildLimaYAML(t *testing.T) {
 	if !strings.Contains(got, "location: \"/Users/test/dir with \\\"quote\\\"\"") {
 		t.Fatalf("YAML did not quote path correctly:\n%s", got)
 	}
+	if !strings.Contains(got, "mountPoint: \"/Users/test\"") {
+		t.Fatalf("YAML did not preserve host mountPoint path:\n%s", got)
+	}
 	if !strings.Contains(got, "writable: true") {
 		t.Fatalf("YAML missing writable: true:\n%s", got)
 	}
