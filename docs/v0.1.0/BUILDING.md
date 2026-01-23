@@ -74,7 +74,7 @@
 Runner 行为：
 
 - 若 App bundle 内存在 `nous-offline-assets/manifest.json`，Runner 会把资源复制到
-  `~/Library/Caches/NousAgentRunner/<instance_id>/OfflineAssets/`，并在生成 Lima YAML 时优先使用本地路径，从而避免首次启动下载。
+  `~/Library/Caches/NousAgentRunner/<instance_id>/SharedTmp/OfflineAssets/`，并在生成 Lima YAML 时优先使用本地路径，从而避免首次启动下载。
 - 若 manifest 内包含 `images[]`，Runner 会在 `Create Service` 时优先把对应 tar 包导入到 VM 的 containerd（避免从 registry 拉取镜像）。
 
 注意：
