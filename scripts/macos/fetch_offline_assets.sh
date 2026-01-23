@@ -24,27 +24,60 @@ CONTAINERD_YAML="${ROOT_DIR}/references/lima/pkg/limayaml/containerd.yaml"
 [ -f "${DEBIAN_YAML}" ] || fail "missing: ${DEBIAN_YAML}"
 [ -f "${CONTAINERD_YAML}" ] || fail "missing: ${CONTAINERD_YAML}"
 
-read -r VM_IMAGE_URL VM_IMAGE_DIGEST < <(
+VM_LINE="$(
   awk '
-    $1=="-" && $2=="location:" {loc=$3; gsub(/"/,"",loc); arch=""; dig=""; next}
+    function flush() {
+      if (loc != "" && (arch == "aarch64" || arch == "arm64")) {
+        print loc, dig
+        exit
+      }
+    }
+    $1=="-" && $2=="location:" {flush(); loc=$3; gsub(/"/,"",loc); arch=""; dig=""; next}
     $1=="arch:" {arch=$2; gsub(/"/,"",arch); next}
     $1=="digest:" {dig=$2; gsub(/"/,"",dig); next}
-    loc!="" && arch=="aarch64" && dig!="" {print loc, dig; exit}
+    END {flush()}
   ' "${DEBIAN_YAML}"
-)
-[ -n "${VM_IMAGE_URL:-}" ] || fail "failed to parse aarch64 image location from: ${DEBIAN_YAML}"
-[ -n "${VM_IMAGE_DIGEST:-}" ] || fail "failed to parse aarch64 image digest from: ${DEBIAN_YAML}"
+)"
+[ -n "${VM_LINE:-}" ] || fail "failed to parse arm64/aarch64 VM image from: ${DEBIAN_YAML}"
+VM_IMAGE_URL="${VM_LINE%% *}"
+VM_IMAGE_DIGEST="${VM_LINE#* }"
+if [ "${VM_IMAGE_DIGEST}" = "${VM_IMAGE_URL}" ]; then
+  VM_IMAGE_DIGEST=""
+fi
 
-read -r NERDCTL_URL NERDCTL_DIGEST < <(
+NERDCTL_LINE="$(
   awk '
-    $1=="-" && $2=="location:" {loc=$3; gsub(/"/,"",loc); arch=""; dig=""; next}
+    function flush() {
+      if (loc != "" && (arch == "aarch64" || arch == "arm64")) {
+        print loc, dig
+        exit
+      }
+    }
+    $1=="-" && $2=="location:" {flush(); loc=$3; gsub(/"/,"",loc); arch=""; dig=""; next}
     $1=="arch:" {arch=$2; gsub(/"/,"",arch); next}
     $1=="digest:" {dig=$2; gsub(/"/,"",dig); next}
-    loc!="" && arch=="aarch64" && dig!="" {print loc, dig; exit}
+    END {flush()}
   ' "${CONTAINERD_YAML}"
-)
-[ -n "${NERDCTL_URL:-}" ] || fail "failed to parse aarch64 nerdctl archive location from: ${CONTAINERD_YAML}"
-[ -n "${NERDCTL_DIGEST:-}" ] || fail "failed to parse aarch64 nerdctl archive digest from: ${CONTAINERD_YAML}"
+)"
+[ -n "${NERDCTL_LINE:-}" ] || fail "failed to parse arm64/aarch64 nerdctl archive from: ${CONTAINERD_YAML}"
+NERDCTL_URL="${NERDCTL_LINE%% *}"
+NERDCTL_DIGEST="${NERDCTL_LINE#* }"
+if [ "${NERDCTL_DIGEST}" = "${NERDCTL_URL}" ]; then
+  NERDCTL_DIGEST=""
+fi
+
+echo "VM image: ${VM_IMAGE_URL}"
+if [ -n "${VM_IMAGE_DIGEST}" ]; then
+  echo "VM digest: ${VM_IMAGE_DIGEST}"
+else
+  echo "VM digest: (missing)"
+fi
+echo "nerdctl archive: ${NERDCTL_URL}"
+if [ -n "${NERDCTL_DIGEST}" ]; then
+  echo "nerdctl digest: ${NERDCTL_DIGEST}"
+else
+  echo "nerdctl digest: (missing)"
+fi
 
 VM_IMAGE_FILE="$(basename "${VM_IMAGE_URL}")"
 NERDCTL_FILE="$(basename "${NERDCTL_URL}")"

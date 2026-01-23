@@ -62,7 +62,9 @@ func (s *Server) prepareOfflineAssets() (*offlineAssets, error) {
 	if err != nil {
 		return nil, err
 	}
-	if vm.Arch != "aarch64" || nerdctl.Arch != "aarch64" {
+	vmArch := normalizeOfflineArch(vm.Arch)
+	nerdctlArch := normalizeOfflineArch(nerdctl.Arch)
+	if vmArch != "aarch64" || nerdctlArch != "aarch64" {
 		return nil, fmt.Errorf("offline assets arch mismatch: vm_image=%q containerd_archive=%q", vm.Arch, nerdctl.Arch)
 	}
 
@@ -106,10 +108,17 @@ func validateOfflineAsset(e offlineAssetEntry, name string) (offlineAssetEntry, 
 	if filepath.Base(e.File) != e.File {
 		return offlineAssetEntry{}, fmt.Errorf("offline assets %s.file must be a base filename", name)
 	}
-	if e.Digest == "" {
-		return offlineAssetEntry{}, fmt.Errorf("offline assets %s.digest is required", name)
-	}
 	return e, nil
+}
+
+func normalizeOfflineArch(arch string) string {
+	arch = strings.TrimSpace(strings.ToLower(arch))
+	switch arch {
+	case "arm64":
+		return "aarch64"
+	default:
+		return arch
+	}
 }
 
 func copyFileIfNeeded(src, dst string) error {
