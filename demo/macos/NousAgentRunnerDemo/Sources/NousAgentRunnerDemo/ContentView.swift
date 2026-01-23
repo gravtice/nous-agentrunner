@@ -18,6 +18,9 @@ struct ContentView: View {
     @State private var workDirPath: String?
     @State private var chatInput = ""
     @State private var chatOutput = ""
+    @State private var debugThinking = ""
+    @State private var debugEvents = ""
+    @State private var showDebug = false
     @State private var selectedImageURL: URL?
     @State private var showImagePicker = false
     @State private var isSending = false
@@ -124,6 +127,43 @@ struct ContentView: View {
                         Button("Send") { sendChat() }
                             .keyboardShortcut(.return, modifiers: [])
                             .disabled(!canSend)
+                    }
+
+                    DisclosureGroup("Debug", isExpanded: $showDebug) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Thinking")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            ScrollView {
+                                Text(debugThinking)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(8)
+                            }
+                            .frame(minHeight: 80)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(.quaternary, lineWidth: 1)
+                            }
+
+                            Text("Events")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            ScrollView {
+                                Text(debugEvents)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(8)
+                            }
+                            .frame(minHeight: 80)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(.quaternary, lineWidth: 1)
+                            }
+                        }
+                        .padding(.top, 4)
                     }
                 }
             }
@@ -263,6 +303,8 @@ struct ContentView: View {
                 statusText = "Created service"
             }
             chatOutput = ""
+            debugThinking = ""
+            debugEvents = ""
             if let serviceID {
                 connectWS(serviceID: serviceID)
             }
@@ -346,6 +388,15 @@ struct ContentView: View {
                             if let t = obj["text"] as? String {
                                 chatOutput += t
                             }
+                        case "response.thinking.delta":
+                            if (obj["reset"] as? Bool) == true {
+                                debugThinking = ""
+                            }
+                            if let t = obj["text"] as? String {
+                                debugThinking += t
+                            }
+                        case "tool.use", "tool.result", "response.usage":
+                            debugEvents += s + "\n"
                         case "response.final":
                             if let contents = obj["contents"] as? [[String: Any]] {
                                 let text = contents.compactMap { c -> String? in

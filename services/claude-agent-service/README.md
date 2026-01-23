@@ -6,6 +6,7 @@
 
 - `GET /health`
 - `WS /v1/chat`（一条连接=一个 session）
+  - 事件：`response.delta` / `response.final` / `response.thinking.delta` / `tool.use` / `tool.result` / `response.usage` / `error` / `done`
 
 运行时约定（由 `nous-guest-runnerd` 注入）：
 
@@ -13,4 +14,3 @@
 - `NOUS_SERVICE_CONFIG_B64`：base64(JSON) 的 ClaudeAgentOptions
 - `NOUS_SHARE_DIRS_B64`：base64(JSON array) 的共享白名单目录列表（用于默认填充 `add_dirs`）
 - `NOUS_MAX_INLINE_BYTES`：inline bytes 上限（默认 8MB）
-

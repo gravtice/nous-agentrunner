@@ -12,7 +12,16 @@ from aiohttp import web
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk._errors import CLINotFoundError
-from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent, TextBlock
+from claude_agent_sdk.types import (
+    AssistantMessage,
+    ResultMessage,
+    StreamEvent,
+    TextBlock,
+    ThinkingBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
+)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -126,6 +135,18 @@ def _stream_delta_text(ev: dict[str, Any]) -> Optional[str]:
     return text
 
 
+def _stream_delta_thinking(ev: dict[str, Any]) -> Optional[str]:
+    if ev.get("type") != "content_block_delta":
+        return None
+    delta = ev.get("delta") or {}
+    if delta.get("type") != "thinking_delta":
+        return None
+    text = delta.get("thinking")
+    if not isinstance(text, str) or text == "":
+        return None
+    return text
+
+
 async def ws_chat(request: web.Request) -> web.WebSocketResponse:
     ws = web.WebSocketResponse()
     await ws.prepare(request)
@@ -163,6 +184,12 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                     await client.query(prompt, session_id=session_id)
 
                     final_text_parts: list[str] = []
+                    thinking_sent: str = ""
+                    seen_tool_uses: set[str] = set()
+                    seen_tool_results: set[str] = set()
+
+                    stream_tool_uses: dict[int, dict[str, Any]] = {}
+                    result: ResultMessage | None = None
                     async for m in client.receive_response():
                         if cancel_event.is_set():
                             break
@@ -171,19 +198,138 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                             if delta:
                                 final_text_parts.append(delta)
                                 await ws.send_json({"type": "response.delta", "text": delta})
+                            tdelta = _stream_delta_thinking(m.event)
+                            if tdelta:
+                                thinking_sent += tdelta
+                                await ws.send_json({"type": "response.thinking.delta", "text": tdelta})
+
+                            ev = m.event
+                            etype = ev.get("type")
+                            if etype == "content_block_start":
+                                idx = ev.get("index")
+                                block = ev.get("content_block") or {}
+                                if isinstance(idx, int) and block.get("type") == "tool_use":
+                                    stream_tool_uses[idx] = {
+                                        "id": block.get("id"),
+                                        "name": block.get("name"),
+                                        "input": block.get("input"),
+                                        "input_json_parts": [],
+                                    }
+                            elif etype == "content_block_delta":
+                                idx = ev.get("index")
+                                state = stream_tool_uses.get(idx) if isinstance(idx, int) else None
+                                if state:
+                                    delta_obj = ev.get("delta") or {}
+                                    if delta_obj.get("type") == "input_json_delta":
+                                        part = delta_obj.get("partial_json")
+                                        if isinstance(part, str) and part != "":
+                                            state["input_json_parts"].append(part)
+                            elif etype == "content_block_stop":
+                                idx = ev.get("index")
+                                state = stream_tool_uses.pop(idx, None) if isinstance(idx, int) else None
+                                if state:
+                                    tool_id = state.get("id")
+                                    tool_name = state.get("name")
+                                    if (
+                                        isinstance(tool_id, str)
+                                        and tool_id
+                                        and isinstance(tool_name, str)
+                                        and tool_name
+                                        and tool_id not in seen_tool_uses
+                                    ):
+                                        payload: dict[str, Any] = {
+                                            "type": "tool.use",
+                                            "id": tool_id,
+                                            "name": tool_name,
+                                        }
+                                        parts = state.get("input_json_parts") or []
+                                        if parts:
+                                            raw = "".join(parts)
+                                            try:
+                                                payload["input"] = json.loads(raw)
+                                            except Exception:
+                                                payload["input_json"] = raw
+                                        else:
+                                            inp = state.get("input")
+                                            if isinstance(inp, dict):
+                                                payload["input"] = inp
+                                        await ws.send_json(payload)
+                                        seen_tool_uses.add(tool_id)
                             continue
                         if isinstance(m, AssistantMessage):
                             # Fallback if deltas are not available.
                             txt = _extract_assistant_text(m)
                             if txt:
                                 final_text_parts = [txt]
+                            for block in m.content:
+                                if isinstance(block, ThinkingBlock):
+                                    t = block.thinking
+                                    if isinstance(t, str) and t != "":
+                                        if t.startswith(thinking_sent):
+                                            delta = t[len(thinking_sent) :]
+                                            if delta:
+                                                thinking_sent = t
+                                                await ws.send_json(
+                                                    {"type": "response.thinking.delta", "text": delta}
+                                                )
+                                        else:
+                                            thinking_sent = t
+                                            await ws.send_json(
+                                                {"type": "response.thinking.delta", "text": t, "reset": True}
+                                            )
+                                elif isinstance(block, ToolUseBlock):
+                                    if block.id not in seen_tool_uses:
+                                        await ws.send_json(
+                                            {
+                                                "type": "tool.use",
+                                                "id": block.id,
+                                                "name": block.name,
+                                                "input": block.input,
+                                            }
+                                        )
+                                        seen_tool_uses.add(block.id)
+                                elif isinstance(block, ToolResultBlock):
+                                    if block.tool_use_id not in seen_tool_results:
+                                        await ws.send_json(
+                                            {
+                                                "type": "tool.result",
+                                                "tool_use_id": block.tool_use_id,
+                                                "content": block.content,
+                                                "is_error": block.is_error,
+                                            }
+                                        )
+                                        seen_tool_results.add(block.tool_use_id)
+                        if isinstance(m, UserMessage) and isinstance(m.content, list):
+                            for block in m.content:
+                                if isinstance(block, ToolResultBlock):
+                                    if block.tool_use_id not in seen_tool_results:
+                                        await ws.send_json(
+                                            {
+                                                "type": "tool.result",
+                                                "tool_use_id": block.tool_use_id,
+                                                "content": block.content,
+                                                "is_error": block.is_error,
+                                            }
+                                        )
+                                        seen_tool_results.add(block.tool_use_id)
                         if isinstance(m, ResultMessage):
+                            result = m
                             break
 
                     final_text = "".join(final_text_parts)
                     await ws.send_json(
                         {"type": "response.final", "contents": [{"kind": "text", "text": final_text}]}
                     )
+                    if result is not None:
+                        await ws.send_json(
+                            {
+                                "type": "response.usage",
+                                "usage": result.usage,
+                                "total_cost_usd": result.total_cost_usd,
+                                "duration_ms": result.duration_ms,
+                                "duration_api_ms": result.duration_api_ms,
+                            }
+                        )
                     await ws.send_json({"type": "done"})
                 except Exception as e:
                     await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": str(e)})
