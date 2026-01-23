@@ -1,6 +1,7 @@
 package runnerd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -91,6 +92,11 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 	gc, err := s.ensureGuestReady(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GUEST_UNAVAILABLE", err.Error(), nil)
+		return
+	}
+
+	if err := s.ensureOfflineImageAvailable(r.Context(), gc, req.ImageRef); err != nil {
+		writeError(w, http.StatusInternalServerError, "IMAGE_IMPORT_FAILED", err.Error(), nil)
 		return
 	}
 
@@ -241,6 +247,40 @@ func (s *Server) serviceASPURL(serviceID string) string {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+func (s *Server) ensureOfflineImageAvailable(ctx context.Context, gc *guestClient, imageRef string) error {
+	assets, err := s.prepareOfflineAssets()
+	if err != nil || assets == nil || len(assets.Images) == 0 {
+		return err
+	}
+	tarPath, ok := assets.Images[imageRef]
+	if !ok || tarPath == "" {
+		return nil
+	}
+	if _, _, ok := s.validateAllowedPath(tarPath); !ok {
+		return fmt.Errorf("offline image tar is not under any shared directory: %q", tarPath)
+	}
+
+	var list struct {
+		Images []string `json:"images"`
+	}
+	if err := gc.getJSON(ctx, "/internal/images", &list); err != nil {
+		return err
+	}
+	for _, existing := range list.Images {
+		if normalizeImageRef(existing) == imageRef {
+			return nil
+		}
+	}
+
+	log.Printf("images.import_offline: start ref=%s path=%s", imageRef, tarPath)
+	var out any
+	if err := gc.postJSON(ctx, "/internal/images/import", map[string]any{"path": tarPath}, &out); err != nil {
+		return err
+	}
+	log.Printf("images.import_offline: ok ref=%s", imageRef)
+	return nil
+}
 
 func (s *Server) validateAndPrepareRWMounts(rw []string) ([]string, error) {
 	s.mu.Lock()

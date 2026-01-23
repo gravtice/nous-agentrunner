@@ -131,6 +131,15 @@ create_minimal_app_from_swiftpm() {
   require_cmd swift
   require_cmd file
 
+  local nous_version="0.1.0"
+  local version_file="${ROOT_DIR}/VERSION"
+  if [ -f "${version_file}" ]; then
+    nous_version="$(awk -F= '$1=="NOUS_VERSION"{print $2; exit}' "${version_file}" | tr -d ' \t\r\"')"
+    if [ -z "${nous_version}" ]; then
+      nous_version="0.1.0"
+    fi
+  fi
+
   (cd "$pkg_dir" && swift build -c release >/dev/null)
   local bin_dir
   bin_dir="$(cd "$pkg_dir" && swift build -c release --show-bin-path)"
@@ -180,9 +189,9 @@ create_minimal_app_from_swiftpm() {
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>${nous_version}</string>
   <key>CFBundleVersion</key>
-  <string>0.1.0</string>
+  <string>${nous_version}</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
 </dict>

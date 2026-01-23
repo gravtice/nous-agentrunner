@@ -16,12 +16,14 @@ type offlineAssets struct {
 	VMImageDigest        string
 	NerdctlArchivePath   string
 	NerdctlArchiveDigest string
+	Images               map[string]string // image_ref -> tar path (host path; also visible in guest)
 }
 
 type offlineAssetsManifest struct {
 	SchemaVersion     int               `json:"schema_version"`
 	VMImage           offlineAssetEntry `json:"vm_image"`
 	ContainerdArchive offlineAssetEntry `json:"containerd_archive"`
+	Images            []offlineImage    `json:"images"`
 }
 
 type offlineAssetEntry struct {
@@ -29,6 +31,11 @@ type offlineAssetEntry struct {
 	File      string `json:"file"`
 	Digest    string `json:"digest"`
 	SourceURL string `json:"source_url"`
+}
+
+type offlineImage struct {
+	Ref  string `json:"ref"`
+	File string `json:"file"`
 }
 
 func (s *Server) prepareOfflineAssets() (*offlineAssets, error) {
@@ -75,7 +82,9 @@ func (s *Server) prepareOfflineAssets() (*offlineAssets, error) {
 		return nil, nil
 	}
 
-	dstDir := filepath.Join(s.cfg.Paths.CachesDir, "OfflineAssets")
+	// Put large assets under the default shared tmp dir so they are always visible in the guest,
+	// even if the user configured shares without including /Users.
+	dstDir := filepath.Join(s.cfg.Paths.DefaultSharedTmpDir, "OfflineAssets")
 	if err := os.MkdirAll(dstDir, 0o700); err != nil {
 		log.Printf("vm.offline_assets: disabled (mkdir): %v", err)
 		return nil, nil
@@ -95,11 +104,28 @@ func (s *Server) prepareOfflineAssets() (*offlineAssets, error) {
 		return nil, nil
 	}
 
+	images := make(map[string]string)
+	for _, img := range m.Images {
+		img, err := validateOfflineImage(img)
+		if err != nil {
+			log.Printf("vm.offline_assets: skip image (invalid): %v", err)
+			continue
+		}
+		src := filepath.Join(srcDir, img.File)
+		dst := filepath.Join(dstDir, img.File)
+		if err := copyFileIfNeeded(src, dst); err != nil {
+			log.Printf("vm.offline_assets: skip image %q (copy): %v", img.Ref, err)
+			continue
+		}
+		images[img.Ref] = dst
+	}
+
 	return &offlineAssets{
 		VMImagePath:          vmDst,
 		VMImageDigest:        vm.Digest,
 		NerdctlArchivePath:   nerdctlDst,
 		NerdctlArchiveDigest: nerdctl.Digest,
+		Images:               images,
 	}, nil
 }
 
@@ -119,6 +145,26 @@ func validateOfflineAsset(e offlineAssetEntry, name string) (offlineAssetEntry, 
 		return offlineAssetEntry{}, fmt.Errorf("offline assets %s.file must be a base filename", name)
 	}
 	return e, nil
+}
+
+func validateOfflineImage(img offlineImage) (offlineImage, error) {
+	img.Ref = normalizeImageRef(img.Ref)
+	img.File = strings.TrimSpace(img.File)
+	if img.Ref == "" {
+		return offlineImage{}, fmt.Errorf("offline image ref is required")
+	}
+	if img.File == "" {
+		return offlineImage{}, fmt.Errorf("offline image file is required")
+	}
+	if filepath.IsAbs(img.File) {
+		return offlineImage{}, fmt.Errorf("offline image file must be relative: %q", img.File)
+	}
+	clean := filepath.Clean(img.File)
+	if clean == "." || clean == string(filepath.Separator) || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == ".." {
+		return offlineImage{}, fmt.Errorf("offline image file must not escape assets dir: %q", img.File)
+	}
+	img.File = clean
+	return img, nil
 }
 
 func normalizeOfflineArch(arch string) string {
