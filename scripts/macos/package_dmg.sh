@@ -223,6 +223,16 @@ inject_runtime_into_app() {
   fi
   rm -rf "${res_dir}/lima-templates"
   ditto "${DIST_DIR}/lima-templates" "${res_dir}/lima-templates"
+
+  # Optional: bundle offline assets to avoid first-run downloads.
+  # See: scripts/macos/fetch_offline_assets.sh
+  if [ -d "${DIST_DIR}/offline-assets" ]; then
+    if [ ! -f "${DIST_DIR}/offline-assets/manifest.json" ]; then
+      fail "offline-assets present but missing manifest.json: ${DIST_DIR}/offline-assets"
+    fi
+    rm -rf "${res_dir}/nous-offline-assets"
+    ditto "${DIST_DIR}/offline-assets" "${res_dir}/nous-offline-assets"
+  fi
 }
 
 main() {

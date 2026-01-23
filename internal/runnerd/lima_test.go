@@ -17,7 +17,7 @@ func TestM1_BuildLimaYAML(t *testing.T) {
 		{Share: Share{ShareID: "shr_2", HostPath: "/Volumes/data"}, CanonicalHostPath: "/Volumes/data"},
 	}
 
-	got := buildLimaYAML(cfg, shares)
+	got := buildLimaYAML(cfg, shares, nil)
 	for _, want := range []string{
 		"vmType: \"vz\"",
 		"mountType: \"virtiofs\"",
@@ -41,6 +41,29 @@ func TestM1_BuildLimaYAML(t *testing.T) {
 	}
 	if !strings.Contains(got, "writable: true") {
 		t.Fatalf("YAML missing writable: true:\n%s", got)
+	}
+}
+
+func TestM1_BuildLimaYAML_IncludesOfflineAssets(t *testing.T) {
+	cfg := Config{LimaBaseTemplate: "debian-12"}
+	got := buildLimaYAML(cfg, nil, &offlineAssets{
+		VMImagePath:          "/tmp/debian.qcow2",
+		VMImageDigest:        "sha512:deadbeef",
+		NerdctlArchivePath:   "/tmp/nerdctl-full.tgz",
+		NerdctlArchiveDigest: "sha256:cafebabe",
+	})
+	for _, want := range []string{
+		"images:",
+		"location: \"/tmp/debian.qcow2\"",
+		"digest: \"sha512:deadbeef\"",
+		"containerd:",
+		"archives:",
+		"location: \"/tmp/nerdctl-full.tgz\"",
+		"digest: \"sha256:cafebabe\"",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("YAML missing %q:\n%s", want, got)
+		}
 	}
 }
 

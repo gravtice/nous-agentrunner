@@ -138,8 +138,16 @@ func (s *Server) ensureVMRunning(ctx context.Context) error {
 		return err
 	}
 
+	assets, err := s.prepareOfflineAssets()
+	if err != nil {
+		return err
+	}
+	if assets != nil {
+		log.Printf("vm.offline_assets: enabled (vm_image=%s nerdctl=%s)", assets.VMImagePath, assets.NerdctlArchivePath)
+	}
+
 	s.mu.Lock()
-	cfgYAML := buildLimaYAML(s.cfg, s.shares)
+	cfgYAML := buildLimaYAML(s.cfg, s.shares, assets)
 	s.mu.Unlock()
 
 	if err := os.WriteFile(s.limaConfigPath(), []byte(cfgYAML), 0o600); err != nil {
@@ -165,7 +173,7 @@ func (s *Server) ensureVMRunning(ctx context.Context) error {
 		return err
 	}
 
-	_, err := s.runLimactl(ctx, "start", s.cfg.LimaInstanceName)
+	_, err = s.runLimactl(ctx, "start", s.cfg.LimaInstanceName)
 	if err == nil {
 		return nil
 	}
@@ -361,7 +369,7 @@ func (c *cappedBuffer) Write(p []byte) (int, error) {
 func (c *cappedBuffer) String() string { return string(c.buf) }
 func (c *cappedBuffer) Bytes() []byte  { return c.buf }
 
-func buildLimaYAML(cfg Config, shares []shareEntry) string {
+func buildLimaYAML(cfg Config, shares []shareEntry, assets *offlineAssets) string {
 	var b strings.Builder
 	b.WriteString("base:\n")
 	baseTmpl := cfg.LimaBaseTemplate
@@ -371,6 +379,18 @@ func buildLimaYAML(cfg Config, shares []shareEntry) string {
 	b.WriteString("- template:")
 	b.WriteString(baseTmpl)
 	b.WriteString("\n\n")
+	if assets != nil && assets.VMImagePath != "" {
+		b.WriteString("images:\n")
+		b.WriteString("- location: ")
+		b.WriteString(yamlQuote(assets.VMImagePath))
+		b.WriteString("\n  arch: \"aarch64\"\n")
+		if assets.VMImageDigest != "" {
+			b.WriteString("  digest: ")
+			b.WriteString(yamlQuote(assets.VMImageDigest))
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
 	b.WriteString("vmType: \"vz\"\n")
 	b.WriteString("mountType: \"virtiofs\"\n")
 	if cfg.VMCPU > 0 {
@@ -382,6 +402,17 @@ func buildLimaYAML(cfg Config, shares []shareEntry) string {
 	b.WriteString("containerd:\n")
 	b.WriteString("  system: true\n")
 	b.WriteString("  user: false\n")
+	if assets != nil && assets.NerdctlArchivePath != "" {
+		b.WriteString("  archives:\n")
+		b.WriteString("  - location: ")
+		b.WriteString(yamlQuote(assets.NerdctlArchivePath))
+		b.WriteString("\n    arch: \"aarch64\"\n")
+		if assets.NerdctlArchiveDigest != "" {
+			b.WriteString("    digest: ")
+			b.WriteString(yamlQuote(assets.NerdctlArchiveDigest))
+			b.WriteString("\n")
+		}
+	}
 	b.WriteString("mounts:\n")
 	// Lima's base templates mount "~" read-only by default. We want the Guest layer to see shared dirs as writable,
 	// so per-service rw bind mounts can work while the container layer enforces default RO.

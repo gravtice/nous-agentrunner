@@ -52,3 +52,27 @@
 - SwiftPM package 目录（包含 `Package.swift`；脚本会生成最小 `.app` wrapper）
 
 产物输出到：`dist/<AppName>.dmg`
+
+## 6. （可选）离线资产包：避免首次启动下载
+
+默认策略是 **首次启动按 Lima 模板在线下载 VM 镜像与 containerd/nerdctl 依赖**（体积更小、也更容易跟上上游安全更新）。
+
+如果你需要在弱网/企业网络环境中更稳定（或用于离线演示），可以在打包前预下载并随 DMG 一起分发（可选）：
+
+1) 下载离线资产到 `dist/offline-assets/`：
+
+`scripts/macos/fetch_offline_assets.sh`
+
+2) 打包 DMG（`package_dmg.sh` 会自动探测并注入离线资产）：
+
+`scripts/macos/package_dmg.sh <app_path>`
+
+Runner 行为：
+
+- 若 App bundle 内存在 `nous-offline-assets/manifest.json`，Runner 会把资源复制到
+  `~/Library/Caches/NousAgentRunner/<instance_id>/OfflineAssets/`，并在生成 Lima YAML 时优先使用本地路径，从而避免首次启动下载。
+
+注意：
+
+- 这会显著增大 DMG 体积。
+- 一旦把 OS 镜像/依赖随产品再分发，可能触发上游开源许可证的再分发义务（Third‑Party Notices / Source offer 等）。具体合规策略请走你们的法务/合规流程确认。
