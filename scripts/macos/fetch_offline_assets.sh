@@ -27,9 +27,9 @@ CONTAINERD_YAML="${ROOT_DIR}/references/lima/pkg/limayaml/containerd.yaml"
 VM_LINE="$(
   awk '
     function flush() {
-      if (loc != "" && (arch == "aarch64" || arch == "arm64")) {
+      if (!found && loc != "" && (arch == "aarch64" || arch == "arm64")) {
         print loc, dig
-        exit
+        found = 1
       }
     }
     $1=="-" && $2=="location:" {flush(); loc=$3; gsub(/"/,"",loc); arch=""; dig=""; next}
@@ -48,9 +48,9 @@ fi
 NERDCTL_LINE="$(
   awk '
     function flush() {
-      if (loc != "" && (arch == "aarch64" || arch == "arm64")) {
+      if (!found && loc != "" && (arch == "aarch64" || arch == "arm64")) {
         print loc, dig
-        exit
+        found = 1
       }
     }
     $1=="-" && $2=="location:" {flush(); loc=$3; gsub(/"/,"",loc); arch=""; dig=""; next}
@@ -79,6 +79,12 @@ else
   echo "nerdctl digest: (missing)"
 fi
 
+case "${VM_IMAGE_URL}${VM_IMAGE_DIGEST}${NERDCTL_URL}${NERDCTL_DIGEST}" in
+  *$'\n'* | *$'\r'*)
+    fail "parsed values contain invalid newline characters"
+    ;;
+esac
+
 VM_IMAGE_FILE="$(basename "${VM_IMAGE_URL}")"
 NERDCTL_FILE="$(basename "${NERDCTL_URL}")"
 
@@ -105,5 +111,7 @@ cat >"${ASSETS_DIR}/manifest.json" <<EOF
   }
 }
 EOF
+
+python3 -m json.tool "${ASSETS_DIR}/manifest.json" >/dev/null || fail "manifest.json is not valid JSON"
 
 echo "OK: ${ASSETS_DIR}"

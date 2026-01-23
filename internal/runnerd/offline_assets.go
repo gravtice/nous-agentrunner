@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -43,46 +44,55 @@ func (s *Server) prepareOfflineAssets() (*offlineAssets, error) {
 	manifestPath := filepath.Join(srcDir, "manifest.json")
 	b, err := os.ReadFile(manifestPath)
 	if err != nil {
-		return nil, fmt.Errorf("offline assets manifest not readable: %w", err)
+		log.Printf("vm.offline_assets: disabled (read manifest): %v", err)
+		return nil, nil
 	}
 
 	var m offlineAssetsManifest
 	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, fmt.Errorf("offline assets manifest invalid: %w", err)
+		log.Printf("vm.offline_assets: disabled (invalid manifest): %v", err)
+		return nil, nil
 	}
 	if m.SchemaVersion != 1 {
-		return nil, fmt.Errorf("offline assets schema_version %d not supported", m.SchemaVersion)
+		log.Printf("vm.offline_assets: disabled (unsupported schema_version=%d)", m.SchemaVersion)
+		return nil, nil
 	}
 
 	vm, err := validateOfflineAsset(m.VMImage, "vm_image")
 	if err != nil {
-		return nil, err
+		log.Printf("vm.offline_assets: disabled (vm_image invalid): %v", err)
+		return nil, nil
 	}
 	nerdctl, err := validateOfflineAsset(m.ContainerdArchive, "containerd_archive")
 	if err != nil {
-		return nil, err
+		log.Printf("vm.offline_assets: disabled (containerd_archive invalid): %v", err)
+		return nil, nil
 	}
 	vmArch := normalizeOfflineArch(vm.Arch)
 	nerdctlArch := normalizeOfflineArch(nerdctl.Arch)
 	if vmArch != "aarch64" || nerdctlArch != "aarch64" {
-		return nil, fmt.Errorf("offline assets arch mismatch: vm_image=%q containerd_archive=%q", vm.Arch, nerdctl.Arch)
+		log.Printf("vm.offline_assets: disabled (arch mismatch: vm_image=%q containerd_archive=%q)", vm.Arch, nerdctl.Arch)
+		return nil, nil
 	}
 
 	dstDir := filepath.Join(s.cfg.Paths.CachesDir, "OfflineAssets")
 	if err := os.MkdirAll(dstDir, 0o700); err != nil {
-		return nil, err
+		log.Printf("vm.offline_assets: disabled (mkdir): %v", err)
+		return nil, nil
 	}
 
 	vmSrc := filepath.Join(srcDir, vm.File)
 	vmDst := filepath.Join(dstDir, vm.File)
 	if err := copyFileIfNeeded(vmSrc, vmDst); err != nil {
-		return nil, fmt.Errorf("offline assets copy vm_image: %w", err)
+		log.Printf("vm.offline_assets: disabled (copy vm_image): %v", err)
+		return nil, nil
 	}
 
 	nerdctlSrc := filepath.Join(srcDir, nerdctl.File)
 	nerdctlDst := filepath.Join(dstDir, nerdctl.File)
 	if err := copyFileIfNeeded(nerdctlSrc, nerdctlDst); err != nil {
-		return nil, fmt.Errorf("offline assets copy containerd_archive: %w", err)
+		log.Printf("vm.offline_assets: disabled (copy containerd_archive): %v", err)
+		return nil, nil
 	}
 
 	return &offlineAssets{
