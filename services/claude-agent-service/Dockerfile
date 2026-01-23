@@ -2,6 +2,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends nodejs npm ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Claude Agent SDK relies on Claude Code CLI ("claude") via SubprocessCLITransport.
+RUN npm install -g @anthropic-ai/claude-code \
+    && npm cache clean --force
+
 # Install Claude Agent SDK from the vendored reference repo.
 COPY references/claude-agent-sdk-python /opt/claude-agent-sdk-python
 RUN pip install --no-cache-dir -e /opt/claude-agent-sdk-python
@@ -13,4 +21,3 @@ ENV NOUS_SERVICE_PORT=8000
 EXPOSE 8000
 
 CMD ["claude-agent-service"]
-

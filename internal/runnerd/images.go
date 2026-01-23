@@ -16,7 +16,7 @@ func (s *Server) handleImagesPull(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid json", nil)
 		return
 	}
-	req.Ref = strings.TrimSpace(req.Ref)
+	req.Ref = normalizeImageRef(req.Ref)
 	if req.Ref == "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "ref is required", nil)
 		return

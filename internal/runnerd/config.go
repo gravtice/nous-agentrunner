@@ -22,10 +22,15 @@ type Config struct {
 	ListenPort   int
 	RegistryBase string
 
-	LimaInstanceName string
-	LimaHome         string
-	LimactlPath      string
-	GuestBinaryPath  string
+	LimaInstanceName  string
+	LimaHome          string
+	LimactlPath       string
+	LimaTemplatesPath string
+	LimaBaseTemplate  string
+	HTTPProxy         string
+	HTTPSProxy        string
+	NoProxy           string
+	GuestBinaryPath   string
 
 	GuestRunnerPort int // guest-runnerd inside VM
 
@@ -99,9 +104,25 @@ func LoadConfig() (Config, error) {
 		}
 	}
 
-	registryBase := env["NOUS_AGENT_RUNNER_REGISTRY_BASE"]
+	registryBase := strings.TrimSpace(env["NOUS_AGENT_RUNNER_REGISTRY_BASE"])
 	if registryBase == "" {
-		registryBase = "registry.nous.ai/"
+		// Official registry base (single source of truth).
+		// Docker Hub canonical prefix: docker.io/<namespace>/
+		registryBase = "docker.io/gravtice/"
+	}
+	// Backward-compatible migration: early versions used registry.nous.ai as default.
+	// If the user still has that value in their persisted .env.local, upgrade it to Docker Hub.
+	legacyBase := strings.TrimSuffix(registryBase, "/")
+	if legacyBase == "registry.nous.ai" || legacyBase == "registry.nous.ai/gravtice" {
+		registryBase = "docker.io/gravtice/"
+		if err := persistEnv(filepath.Join(paths.AppSupportDir, ".env.local"), env, map[string]string{
+			"NOUS_AGENT_RUNNER_REGISTRY_BASE": registryBase,
+		}); err != nil {
+			return Config{}, err
+		}
+	}
+	if !strings.HasSuffix(registryBase, "/") {
+		registryBase += "/"
 	}
 
 	limactlPath := env["NOUS_AGENT_RUNNER_LIMACTL_PATH"]
@@ -111,6 +132,24 @@ func LoadConfig() (Config, error) {
 			limactlPath = "limactl"
 		}
 	}
+
+	limaTemplatesPath := strings.TrimSpace(env["NOUS_AGENT_RUNNER_LIMA_TEMPLATES_PATH"])
+	if limaTemplatesPath == "" {
+		limaTemplatesPath = findBundledDir("lima-templates")
+	}
+
+	limaBaseTemplate := strings.TrimSpace(env["NOUS_AGENT_RUNNER_LIMA_BASE_TEMPLATE"])
+	if limaBaseTemplate == "" {
+		// Debian is a stable default and avoids Ubuntu cloud image endpoints that may be blocked in some networks.
+		limaBaseTemplate = "debian-12"
+	}
+	if !isSafeLimaTemplateName(limaBaseTemplate) {
+		return Config{}, fmt.Errorf("invalid NOUS_AGENT_RUNNER_LIMA_BASE_TEMPLATE %q", limaBaseTemplate)
+	}
+
+	httpProxy := strings.TrimSpace(env["NOUS_AGENT_RUNNER_HTTP_PROXY"])
+	httpsProxy := strings.TrimSpace(env["NOUS_AGENT_RUNNER_HTTPS_PROXY"])
+	noProxy := strings.TrimSpace(env["NOUS_AGENT_RUNNER_NO_PROXY"])
 
 	guestBinaryPath := strings.TrimSpace(env["NOUS_AGENT_RUNNER_GUEST_BINARY_PATH"])
 	if guestBinaryPath == "" {
@@ -135,7 +174,17 @@ func LoadConfig() (Config, error) {
 		return Config{}, err
 	}
 
-	limaHome := filepath.Join(paths.AppSupportDir, "lima")
+	// Lima uses UNIX domain sockets under $LIMA_HOME/<instance>/, which must be short enough
+	// for UNIX_PATH_MAX (~104 bytes). Prefer CachesDir to keep paths short.
+	limaHome := filepath.Join(paths.CachesDir, "lima")
+	legacyLimaHome := filepath.Join(paths.AppSupportDir, "lima")
+	if _, err := os.Stat(limaHome); os.IsNotExist(err) {
+		if _, err := os.Stat(legacyLimaHome); err == nil {
+			// Best-effort: preserve any existing instance state from older versions.
+			_ = os.MkdirAll(filepath.Dir(limaHome), 0o700)
+			_ = os.Rename(legacyLimaHome, limaHome)
+		}
+	}
 	limaInstanceName := "nous-" + instanceID
 
 	vmCPU := mustParseInt(env["NOUS_AGENT_RUNNER_VM_CPU_CORES"], 0)
@@ -145,20 +194,25 @@ func LoadConfig() (Config, error) {
 	}
 
 	return Config{
-		InstanceID:       instanceID,
-		ListenAddr:       "127.0.0.1",
-		ListenPort:       port,
-		RegistryBase:     registryBase,
-		LimaInstanceName: limaInstanceName,
-		LimaHome:         limaHome,
-		LimactlPath:      limactlPath,
-		GuestBinaryPath:  guestBinaryPath,
-		GuestRunnerPort:  guestPort,
-		MaxInlineBytes:   maxInlineBytes,
-		Token:            token,
-		Paths:            paths,
-		VMCPU:            vmCPU,
-		VMMemoryMiB:      vmMemMiB,
+		InstanceID:        instanceID,
+		ListenAddr:        "127.0.0.1",
+		ListenPort:        port,
+		RegistryBase:      registryBase,
+		LimaInstanceName:  limaInstanceName,
+		LimaHome:          limaHome,
+		LimactlPath:       limactlPath,
+		LimaTemplatesPath: limaTemplatesPath,
+		LimaBaseTemplate:  limaBaseTemplate,
+		HTTPProxy:         httpProxy,
+		HTTPSProxy:        httpsProxy,
+		NoProxy:           noProxy,
+		GuestBinaryPath:   guestBinaryPath,
+		GuestRunnerPort:   guestPort,
+		MaxInlineBytes:    maxInlineBytes,
+		Token:             token,
+		Paths:             paths,
+		VMCPU:             vmCPU,
+		VMMemoryMiB:       vmMemMiB,
 	}, nil
 }
 
@@ -177,6 +231,40 @@ func findBundledTool(name string) string {
 		}
 	}
 	return ""
+}
+
+func findBundledDir(name string) string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	candidates := []string{
+		filepath.Join(filepath.Dir(exe), name),
+		filepath.Clean(filepath.Join(filepath.Dir(exe), "..", "Resources", name)),
+	}
+	for _, p := range candidates {
+		if fi, err := os.Stat(p); err == nil && fi.IsDir() {
+			return p
+		}
+	}
+	return ""
+}
+
+func isSafeLimaTemplateName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.' || r == '/':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func mustParseInt(s string, def int) int {

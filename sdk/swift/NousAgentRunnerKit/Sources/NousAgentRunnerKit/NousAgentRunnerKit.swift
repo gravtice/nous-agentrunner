@@ -38,6 +38,7 @@ public struct NousAgentRunnerRuntime: Sendable {
 public final class NousAgentRunnerDaemon {
     private let instanceID: String
     private var process: Process?
+    private var logFileHandle: FileHandle?
 
     public init(instanceID: String? = nil) throws {
         self.instanceID = try instanceID ?? loadInstanceIDFromBundle()
@@ -55,8 +56,21 @@ public final class NousAgentRunnerDaemon {
             let runnerURL = try locateBundledExecutable(named: "nous-agent-runnerd")
             let p = Process()
             p.executableURL = runnerURL
-            p.standardOutput = Pipe()
-            p.standardError = Pipe()
+
+            // Persist logs to App Support for debugging (Pipe is not read and may stall).
+            let appSupportDir = try resolveAppSupportDir(instanceID: instanceID)
+            let logURL = appSupportDir.appendingPathComponent("runnerd.log")
+            FileManager.default.createFile(atPath: logURL.path, contents: nil)
+            let fh = try FileHandle(forWritingTo: logURL)
+            try fh.seekToEnd()
+            let header = "\n--- runnerd start \(Date()) ---\n"
+            if let data = header.data(using: .utf8) {
+                try? fh.write(contentsOf: data)
+            }
+            p.standardOutput = fh
+            p.standardError = fh
+            logFileHandle = fh
+
             try p.run()
             process = p
         }
@@ -78,6 +92,8 @@ public final class NousAgentRunnerDaemon {
         guard let p = process else { return }
         p.terminate()
         process = nil
+        try? logFileHandle?.close()
+        logFileHandle = nil
     }
 }
 
@@ -91,26 +107,30 @@ public final class NousAgentRunnerClient {
     }
 
     public func getSystemStatus() async throws -> [String: Any] {
-        try await requestJSON(method: "GET", path: "/v1/system/status", body: nil)
+        try await requestJSON(method: "GET", path: "/v1/system/status", body: nil, timeoutSeconds: 30)
     }
 
     public func getSystemPaths() async throws -> [String: Any] {
-        try await requestJSON(method: "GET", path: "/v1/system/paths", body: nil)
+        try await requestJSON(method: "GET", path: "/v1/system/paths", body: nil, timeoutSeconds: 30)
     }
 
     public func listShares() async throws -> [String: Any] {
-        try await requestJSON(method: "GET", path: "/v1/shares", body: nil)
+        try await requestJSON(method: "GET", path: "/v1/shares", body: nil, timeoutSeconds: 30)
     }
 
     public func addShare(hostPath: String) async throws -> [String: Any] {
-        try await requestJSON(method: "POST", path: "/v1/shares", body: ["host_path": hostPath])
+        try await requestJSON(method: "POST", path: "/v1/shares", body: ["host_path": hostPath], timeoutSeconds: 60)
     }
 
     public func pullImage(ref: String) async throws -> [String: Any] {
-        try await requestJSON(method: "POST", path: "/v1/images/pull", body: ["ref": ref])
+        try await requestJSON(method: "POST", path: "/v1/images/pull", body: ["ref": ref], timeoutSeconds: 1800)
     }
 
-    public func createClaudeService(imageRef: String, rwMounts: [String], serviceConfig: [String: Any]) async throws -> [String: Any] {
+    public func restartVM() async throws -> [String: Any] {
+        try await requestJSON(method: "POST", path: "/v1/system/vm/restart", body: nil, timeoutSeconds: 1800)
+    }
+
+    public func createClaudeService(imageRef: String, rwMounts: [String], env: [String: String] = [:], serviceConfig: [String: Any]) async throws -> [String: Any] {
         let body: [String: Any] = [
             "type": "claude",
             "image_ref": imageRef,
@@ -120,13 +140,14 @@ public final class NousAgentRunnerClient {
                 "pids": 256,
             ],
             "rw_mounts": rwMounts,
+            "env": env,
             "service_config": serviceConfig,
         ]
-        return try await requestJSON(method: "POST", path: "/v1/services", body: body)
+        return try await requestJSON(method: "POST", path: "/v1/services", body: body, timeoutSeconds: 1800)
     }
 
     public func deleteService(serviceID: String) async throws -> [String: Any] {
-        try await requestJSON(method: "DELETE", path: "/v1/services/\(serviceID)", body: nil)
+        try await requestJSON(method: "DELETE", path: "/v1/services/\(serviceID)", body: nil, timeoutSeconds: 300)
     }
 
     public func openChatWebSocket(serviceID: String) throws -> URLSessionWebSocketTask {
@@ -144,10 +165,11 @@ public final class NousAgentRunnerClient {
         return session.webSocketTask(with: req)
     }
 
-    private func requestJSON(method: String, path: String, body: [String: Any]?) async throws -> [String: Any] {
+    private func requestJSON(method: String, path: String, body: [String: Any]?, timeoutSeconds: TimeInterval) async throws -> [String: Any] {
         let url = runtime.baseURL.appendingPathComponent(path)
         var req = URLRequest(url: url)
         req.httpMethod = method
+        req.timeoutInterval = timeoutSeconds
         req.setValue("Bearer \(runtime.token)", forHTTPHeaderField: "Authorization")
         if let body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")

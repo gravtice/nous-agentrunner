@@ -3,6 +3,7 @@ package runnerd
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -28,6 +29,8 @@ func (s *Server) handleServiceChatWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("ws: client connected service_id=%s", serviceID)
+
 	clientConn, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -50,10 +53,13 @@ func (s *Server) handleServiceChatWS(w http.ResponseWriter, r *http.Request) {
 	guestWSURL := strings.Replace(gc.baseURL, "http://", "ws://", 1) + "/internal/services/" + serviceID + "/chat?session_id=" + sessionID
 	guestConn, _, err := websocket.DefaultDialer.DialContext(r.Context(), guestWSURL, nil)
 	if err != nil {
+		log.Printf("ws: guest dial failed service_id=%s session_id=%s err=%v", serviceID, sessionID, err)
 		_ = clientConn.WriteJSON(map[string]any{"type": "error", "code": "SERVICE_UNAVAILABLE", "message": err.Error()})
 		return
 	}
 	defer guestConn.Close()
+
+	log.Printf("ws: guest connected service_id=%s session_id=%s", serviceID, sessionID)
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
@@ -63,7 +69,11 @@ func (s *Server) handleServiceChatWS(w http.ResponseWriter, r *http.Request) {
 	go func() { errCh <- proxyWS(ctx, clientConn, guestConn, clientConn, s.validateClientASPMessage, nil) }()
 	go func() { errCh <- proxyWS(ctx, guestConn, clientConn, nil, nil, dropSessionStarted) }()
 
-	<-errCh
+	err = <-errCh
+	cancel()
+	if err != nil && !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+		log.Printf("ws: proxy stopped service_id=%s session_id=%s err=%v", serviceID, sessionID, err)
+	}
 }
 
 func proxyWS(ctx context.Context, src, dst, errDst *websocket.Conn, validate func([]byte) error, filter func([]byte) bool) error {

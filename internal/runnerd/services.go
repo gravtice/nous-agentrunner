@@ -3,6 +3,7 @@ package runnerd
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,11 +12,12 @@ import (
 )
 
 type createServiceRequest struct {
-	Type          string           `json:"type"`
-	ImageRef      string           `json:"image_ref"`
-	Resources     serviceResources `json:"resources"`
-	RWMounts      []string         `json:"rw_mounts"`
-	ServiceConfig map[string]any   `json:"service_config"`
+	Type          string            `json:"type"`
+	ImageRef      string            `json:"image_ref"`
+	Resources     serviceResources  `json:"resources"`
+	RWMounts      []string          `json:"rw_mounts"`
+	Env           map[string]string `json:"env"`
+	ServiceConfig map[string]any    `json:"service_config"`
 }
 
 type serviceResources struct {
@@ -31,7 +33,7 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Type = strings.TrimSpace(req.Type)
-	req.ImageRef = strings.TrimSpace(req.ImageRef)
+	req.ImageRef = normalizeImageRef(req.ImageRef)
 	if req.Type == "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "type is required", nil)
 		return
@@ -55,6 +57,12 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	env, err := validateServiceEnv(req.Env)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error(), nil)
+		return
+	}
+
 	// Validate mcp_servers path if provided as a string.
 	if v, ok := req.ServiceConfig["mcp_servers"]; ok {
 		if p, ok := v.(string); ok && strings.TrimSpace(p) != "" {
@@ -70,6 +78,8 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to allocate service_id", nil)
 		return
 	}
+
+	log.Printf("services.create: start service_id=%s type=%s image_ref=%s rw_mounts=%d env=%d", serviceID, req.Type, req.ImageRef, len(canonRW), len(env))
 
 	s.mu.Lock()
 	shares := make([]string, 0, len(s.shares))
@@ -97,6 +107,7 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		"resources":          req.Resources,
 		"shares":             shares,
 		"rw_mounts":          canonRW,
+		"env":                env,
 		"service_config_b64": payload,
 		"max_inline_bytes":   s.cfg.MaxInlineBytes,
 	}
@@ -106,9 +117,12 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		State     string `json:"state"`
 	}
 	if err := gc.postJSON(r.Context(), "/internal/services", guestReq, &guestResp); err != nil {
+		log.Printf("services.create: guest error service_id=%s err=%v", serviceID, err)
 		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
 		return
 	}
+
+	log.Printf("services.create: ok service_id=%s state=%s", serviceID, guestResp.State)
 
 	s.mu.Lock()
 	s.services[serviceID] = Service{
@@ -229,6 +243,10 @@ func (s *Server) serviceASPURL(serviceID string) string {
 func itoa(n int) string { return strconv.Itoa(n) }
 
 func (s *Server) validateAndPrepareRWMounts(rw []string) ([]string, error) {
+	s.mu.Lock()
+	shares := append([]shareEntry(nil), s.shares...)
+	s.mu.Unlock()
+
 	out := make([]string, 0, len(rw))
 	for _, p := range rw {
 		p = strings.TrimSpace(p)
@@ -238,14 +256,141 @@ func (s *Server) validateAndPrepareRWMounts(rw []string) ([]string, error) {
 		if !filepath.IsAbs(p) {
 			return nil, fmt.Errorf("rw_mount must be absolute: %q", p)
 		}
+
+		canonIntended, err := canonicalizePathForCreate(p)
+		if err != nil {
+			return nil, fmt.Errorf("rw_mount cannot be canonicalized: %q", p)
+		}
+		allowed := false
+		for _, e := range shares {
+			if hasPathPrefix(canonIntended, e.CanonicalHostPath) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return nil, fmt.Errorf("rw_mount not allowed: %q", p)
+		}
+
 		if err := os.MkdirAll(p, 0o700); err != nil {
 			return nil, fmt.Errorf("rw_mount not writable: %q", p)
 		}
-		canon, _, ok := s.validateAllowedPath(p)
-		if !ok {
+
+		canon, err := canonicalizeExistingPath(p)
+		if err != nil {
+			return nil, fmt.Errorf("rw_mount cannot be canonicalized: %q", p)
+		}
+		// Safety: re-check after creation; avoid accidentally writing outside shares.
+		allowed = false
+		for _, e := range shares {
+			if hasPathPrefix(canon, e.CanonicalHostPath) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
 			return nil, fmt.Errorf("rw_mount not allowed: %q", p)
 		}
 		out = append(out, canon)
 	}
 	return out, nil
+}
+
+func canonicalizePathForCreate(path string) (string, error) {
+	path = filepath.Clean(path)
+	if path == "" {
+		return "", fmt.Errorf("empty path")
+	}
+
+	// If it already exists, we can canonicalize directly.
+	if _, err := os.Stat(path); err == nil {
+		return canonicalizeExistingPath(path)
+	}
+
+	// Find the nearest existing parent, canonicalize it, then append the missing suffix.
+	existing := path
+	var suffix []string
+	for {
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			break
+		}
+		if _, err := os.Stat(existing); err == nil {
+			break
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+		suffix = append([]string{filepath.Base(existing)}, suffix...)
+		existing = parent
+	}
+
+	fi, err := os.Stat(existing)
+	if err != nil {
+		return "", err
+	}
+	if !fi.IsDir() {
+		return "", fmt.Errorf("parent is not a directory: %q", existing)
+	}
+
+	canonParent, err := canonicalizeExistingPath(existing)
+	if err != nil {
+		return "", err
+	}
+	if len(suffix) == 0 {
+		return canonParent, nil
+	}
+
+	parts := append([]string{canonParent}, suffix...)
+	return filepath.Clean(filepath.Join(parts...)), nil
+}
+
+func validateServiceEnv(in map[string]string) (map[string]string, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	if len(in) > 128 {
+		return nil, fmt.Errorf("too many env vars")
+	}
+
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		key := strings.TrimSpace(k)
+		if key == "" {
+			return nil, fmt.Errorf("env var name is empty")
+		}
+		if strings.HasPrefix(key, "NOUS_") {
+			return nil, fmt.Errorf("env var name is reserved: %q", key)
+		}
+		if !isValidEnvKey(key) {
+			return nil, fmt.Errorf("invalid env var name: %q", key)
+		}
+		if _, ok := out[key]; ok {
+			return nil, fmt.Errorf("duplicate env var name: %q", key)
+		}
+		if strings.IndexByte(v, 0) >= 0 {
+			return nil, fmt.Errorf("env var value contains NUL: %q", key)
+		}
+		if len(v) > 16*1024 {
+			return nil, fmt.Errorf("env var value too large: %q", key)
+		}
+		out[key] = v
+	}
+	return out, nil
+}
+
+func isValidEnvKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	for i := 0; i < len(key); i++ {
+		c := key[i]
+		if c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+			continue
+		}
+		if i > 0 && c >= '0' && c <= '9' {
+			continue
+		}
+		return false
+	}
+	return key[0] < '0' || key[0] > '9'
 }

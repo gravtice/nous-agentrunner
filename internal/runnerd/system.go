@@ -2,6 +2,7 @@ package runnerd
 
 import (
 	"net/http"
+	"path/filepath"
 )
 
 func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
@@ -32,8 +33,15 @@ func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSystemPaths(w http.ResponseWriter, r *http.Request) {
+	limaInstanceDir := ""
+	if s.cfg.LimaHome != "" && s.cfg.LimaInstanceName != "" {
+		limaInstanceDir = s.limaInstanceDir()
+	}
 	writeJSON(w, 200, map[string]any{
 		"default_temp_dir": s.cfg.Paths.DefaultSharedTmpDir,
+		"runnerd_log":      filepath.Join(s.cfg.Paths.AppSupportDir, "runnerd.log"),
+		"lima_home_dir":    s.cfg.LimaHome,
+		"lima_instance_dir": limaInstanceDir,
 	})
 }
 

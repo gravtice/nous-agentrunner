@@ -19,6 +19,8 @@
 - `dist/nous-agent-runnerd`（darwin/arm64）
 - `dist/nous-guest-runnerd`（linux/arm64，供 VM 内 systemd 启动）
 - `dist/limactl`（darwin/arm64，作为内部 VM 后端）
+- `dist/lima-guestagent.Linux-aarch64`（linux/arm64，供 Lima hostagent 使用）
+- `dist/lima-templates/`（Lima templates，供 `template:*` 解析）
 
 ## 3. 构建 claude-agent-service 镜像
 
@@ -39,13 +41,14 @@
 
 ## 5. DMG 打包
 
-`scripts/macos/make_dmg.sh` 需要一个已构建好的 `.app`（例如 `dist/NousAgentRunnerDemo.app`）。
+推荐使用一键脚本（会自动构建 runtime 二进制、把它们注入到 App 的 `Contents/Resources/`，再输出 DMG）：
 
-将以下文件放入 App bundle 的 `Contents/Resources/`（建议）：
+`scripts/macos/package_dmg.sh <app_path>`
 
-- `nous-agent-runnerd`
-- `limactl`
-- `nous-guest-runnerd`
-- `NousAgentRunnerConfig.json`（包含 `instance_id`，App 与 runnerd 需一致）
+其中 `<app_path>` 支持：
 
-然后由 App 启动时以子进程方式启动 `nous-agent-runnerd`。
+- 已构建的 `.app` bundle 路径
+- 包含且仅包含一个 `.app` 的目录
+- SwiftPM package 目录（包含 `Package.swift`；脚本会生成最小 `.app` wrapper）
+
+产物输出到：`dist/<AppName>.dmg`

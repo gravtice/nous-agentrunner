@@ -3,7 +3,10 @@ package runnerd
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 )
@@ -22,19 +25,28 @@ func (s *Server) handleVMRestart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) restartVM(ctx context.Context) error {
+	start := time.Now()
 	s.mu.Lock()
-	if s.sshTunnelCmd != nil && s.sshTunnelCmd.Process != nil {
-		_ = s.sshTunnelCmd.Process.Kill()
-	}
-	s.sshTunnelCmd = nil
-	s.guestClient = nil
-	s.guestLocalPort = 0
+	recreate := s.vmRestartRequired
 	s.mu.Unlock()
 
+	log.Printf("vm.restart: start (recreate=%v)", recreate)
+	defer func() {
+		log.Printf("vm.restart: done (%s)", time.Since(start).Truncate(time.Millisecond))
+	}()
+
 	// Stop may fail if the VM is not running; ignore common failures.
-	_, err := s.runLimactl(ctx, "stop", s.cfg.LimaInstanceName)
-	if err != nil && !errors.Is(err, context.Canceled) {
-		// Continue; start will create/start anyway.
+	if _, err := os.Stat(filepath.Join(s.limaInstanceDir(), "lima.yaml")); err == nil {
+		_, err := s.runLimactl(ctx, "stop", s.cfg.LimaInstanceName)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			// Continue; start will create/start anyway.
+		}
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("vm.restart: stat instance: %v", err)
+	}
+	if recreate {
+		// Shares are configured at VM creation time; to apply share changes, recreate the instance.
+		_, _ = s.runLimactl(ctx, "delete", "-f", s.cfg.LimaInstanceName)
 	}
 	// Give Lima a moment to release resources.
 	time.Sleep(500 * time.Millisecond)

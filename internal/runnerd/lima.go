@@ -1,11 +1,14 @@
 package runnerd
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,24 +46,84 @@ func (s *Server) limaInstanceState(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var items []limaListItem
-	if err := json.Unmarshal(out, &items); err != nil {
+	state, err := limaInstanceStateFromListOutput(out, s.cfg.LimaInstanceName)
+	if err != nil {
 		return "", fmt.Errorf("parse limactl list output: %w", err)
+	}
+	return state, nil
+}
+
+func limaInstanceStateFromListOutput(out []byte, instanceName string) (string, error) {
+	items, err := parseLimactlListOutput(out)
+	if err != nil {
+		return "", err
 	}
 	if len(items) == 0 {
 		return "not_created", nil
 	}
-	switch items[0].Status {
+
+	item := items[0]
+	if instanceName != "" && len(items) > 1 {
+		for _, it := range items {
+			if it.Name == instanceName {
+				item = it
+				break
+			}
+		}
+	}
+
+	switch item.Status {
 	case "Running":
 		return "running", nil
 	case "Stopped":
 		return "stopped", nil
 	default:
-		if items[0].Status == "" {
+		if item.Status == "" {
 			return "unknown", nil
 		}
-		return strings.ToLower(items[0].Status), nil
+		return strings.ToLower(item.Status), nil
 	}
+}
+
+func parseLimactlListOutput(out []byte) ([]limaListItem, error) {
+	out = bytes.TrimSpace(out)
+	if len(out) == 0 {
+		return nil, nil
+	}
+
+	switch out[0] {
+	case '[':
+		var items []limaListItem
+		if err := json.Unmarshal(out, &items); err != nil {
+			return nil, err
+		}
+		return items, nil
+	case '{':
+		var item limaListItem
+		if err := json.Unmarshal(out, &item); err == nil {
+			return []limaListItem{item}, nil
+		}
+	}
+
+	// Lima v2 may output NDJSON (one JSON object per line).
+	var items []limaListItem
+	sc := bufio.NewScanner(bytes.NewReader(out))
+	sc.Buffer(make([]byte, 0, 1024), 1024*1024)
+	for sc.Scan() {
+		line := bytes.TrimSpace(sc.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var item limaListItem
+		if err := json.Unmarshal(line, &item); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (s *Server) ensureVMRunning(ctx context.Context) error {
@@ -83,39 +146,231 @@ func (s *Server) ensureVMRunning(ctx context.Context) error {
 		return err
 	}
 
-	// Create+start if instance dir doesn't exist.
-	if _, err := os.Stat(s.limaInstanceDir()); errors.Is(err, os.ErrNotExist) {
-		_, err := s.runLimactl(ctx, "start", "--name", s.cfg.LimaInstanceName, s.limaConfigPath())
+	// Create+start if instance is not present (or has incomplete state).
+	// limactl expects $LIMA_HOME/<name>/lima.yaml to exist for existing instances.
+	instanceDir := s.limaInstanceDir()
+	if _, err := os.Stat(instanceDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			_, err := s.runLimactl(ctx, "start", "--name", s.cfg.LimaInstanceName, s.limaConfigPath())
+			return err
+		}
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(instanceDir, "lima.yaml")); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			_ = os.RemoveAll(instanceDir)
+			_, err := s.runLimactl(ctx, "start", "--name", s.cfg.LimaInstanceName, s.limaConfigPath())
+			return err
+		}
 		return err
 	}
 
-	// Best-effort: update config in-place for the next restart.
-	_ = os.WriteFile(filepath.Join(s.limaInstanceDir(), "lima.yaml"), []byte(cfgYAML), 0o600)
 	_, err := s.runLimactl(ctx, "start", s.cfg.LimaInstanceName)
+	if err == nil {
+		return nil
+	}
+	// Prior versions wrote the template-based YAML (with "base") directly into the instance dir,
+	// which breaks `limactl start` for existing instances (instance YAML must have `images` and `base` must be empty).
+	// Repair by deleting and recreating the instance from our current config.
+	if isLimaInstanceYAMLInvalid(err) {
+		_, _ = s.runLimactl(ctx, "delete", "-f", s.cfg.LimaInstanceName)
+		_, err2 := s.runLimactl(ctx, "start", "--name", s.cfg.LimaInstanceName, s.limaConfigPath())
+		return err2
+	}
 	return err
 }
 
 func (s *Server) runLimactl(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, s.cfg.LimactlPath, args...)
-	cmd.Env = append(os.Environ(), "LIMA_HOME="+s.cfg.LimaHome)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+	limactlArgs := append([]string{"--tty=false"}, args...)
+	if len(args) > 0 && args[0] == "start" {
+		limactlArgs = append([]string{"--tty=false", "start", "--timeout=30m"}, args[1:]...)
+	}
+
+	start := time.Now()
+	log.Printf("limactl %v: start", args)
+	cmd := exec.CommandContext(ctx, s.cfg.LimactlPath, limactlArgs...)
+	env := os.Environ()
+	env = setEnv(env, "LIMA_HOME", s.cfg.LimaHome)
+	if s.cfg.LimaTemplatesPath != "" {
+		env = setEnv(env, "LIMA_TEMPLATES_PATH", s.cfg.LimaTemplatesPath)
+	}
+	if s.cfg.HTTPProxy != "" {
+		env = setEnv(env, "HTTP_PROXY", s.cfg.HTTPProxy)
+		env = setEnv(env, "http_proxy", s.cfg.HTTPProxy)
+	}
+	if s.cfg.HTTPSProxy != "" {
+		env = setEnv(env, "HTTPS_PROXY", s.cfg.HTTPSProxy)
+		env = setEnv(env, "https_proxy", s.cfg.HTTPSProxy)
+	}
+	if s.cfg.NoProxy != "" {
+		env = setEnv(env, "NO_PROXY", s.cfg.NoProxy)
+		env = setEnv(env, "no_proxy", s.cfg.NoProxy)
+	}
+	cmd.Env = env
+	var stdout cappedBuffer
+	stdout.max = 64 * 1024
+	var stderr cappedBuffer
+	stderr.max = 256 * 1024
 	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stderrLog := newLineLogger("limactl(" + firstArg(args) + "): ")
+	cmd.Stderr = io.MultiWriter(&stderr, stderrLog)
+
+	var stillDone chan struct{}
+	if len(args) > 0 && args[0] == "start" {
+		stillDone = make(chan struct{})
+		go logStillRunning(stillDone, "limactl start", 30*time.Second)
+	}
+
 	if err := cmd.Run(); err != nil {
+		if stillDone != nil {
+			close(stillDone)
+		}
+		stderrLog.Flush()
+
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = err.Error()
 		}
+		if strings.Contains(msg, "com.apple.security.virtualization") {
+			log.Printf("limactl %v: missing com.apple.security.virtualization entitlement", args)
+			return nil, fmt.Errorf("missing com.apple.security.virtualization entitlement (codesign limactl with vz entitlements)")
+		}
+		log.Printf("limactl %v: error after %s: %s", args, time.Since(start).Truncate(time.Millisecond), msg)
 		return nil, fmt.Errorf("limactl %v: %s", args, msg)
 	}
+	if stillDone != nil {
+		close(stillDone)
+	}
+	stderrLog.Flush()
+
+	log.Printf("limactl %v: ok (%s)", args, time.Since(start).Truncate(time.Millisecond))
 	return stdout.Bytes(), nil
 }
+
+func firstArg(args []string) string {
+	if len(args) == 0 {
+		return "?"
+	}
+	return args[0]
+}
+
+type lineLogger struct {
+	prefix string
+	buf    []byte
+}
+
+func newLineLogger(prefix string) *lineLogger {
+	return &lineLogger{prefix: prefix}
+}
+
+func (l *lineLogger) Write(p []byte) (int, error) {
+	l.buf = append(l.buf, p...)
+	for {
+		idx := bytes.IndexByte(l.buf, '\n')
+		if idx < 0 {
+			break
+		}
+		line := strings.TrimRight(string(l.buf[:idx]), "\r")
+		l.buf = l.buf[idx+1:]
+		if line == "" {
+			continue
+		}
+		log.Printf("%s%s", l.prefix, line)
+	}
+	if len(l.buf) > 4096 {
+		log.Printf("%s%s", l.prefix, strings.TrimRight(string(l.buf), "\r"))
+		l.buf = l.buf[:0]
+	}
+	return len(p), nil
+}
+
+func (l *lineLogger) Flush() {
+	if len(l.buf) == 0 {
+		return
+	}
+	line := strings.TrimRight(string(l.buf), "\r")
+	if line != "" {
+		log.Printf("%s%s", l.prefix, line)
+	}
+	l.buf = l.buf[:0]
+}
+
+func logStillRunning(done <-chan struct{}, label string, interval time.Duration) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	start := time.Now()
+	for {
+		select {
+		case <-done:
+			return
+		case <-t.C:
+			log.Printf("%s: still running (%s)", label, time.Since(start).Truncate(time.Second))
+		}
+	}
+}
+
+func setEnv(env []string, key, val string) []string {
+	prefix := key + "="
+	out := env[:0]
+	for _, kv := range env {
+		if strings.HasPrefix(kv, prefix) {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return append(out, prefix+val)
+}
+
+func isLimaInstanceYAMLInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "errors inspecting instance") ||
+		strings.Contains(msg, "field `base` must be empty") ||
+		strings.Contains(msg, "field `images` must be set")
+}
+
+type cappedBuffer struct {
+	buf []byte
+	max int
+}
+
+func (c *cappedBuffer) Write(p []byte) (int, error) {
+	if c.max <= 0 {
+		return len(p), nil
+	}
+	if len(p) >= c.max {
+		c.buf = append(c.buf[:0], p[len(p)-c.max:]...)
+		return len(p), nil
+	}
+	if len(c.buf)+len(p) <= c.max {
+		c.buf = append(c.buf, p...)
+		return len(p), nil
+	}
+	overflow := len(c.buf) + len(p) - c.max
+	if overflow > len(c.buf) {
+		overflow = len(c.buf)
+	}
+	n := copy(c.buf, c.buf[overflow:])
+	c.buf = c.buf[:n]
+	c.buf = append(c.buf, p...)
+	return len(p), nil
+}
+
+func (c *cappedBuffer) String() string { return string(c.buf) }
+func (c *cappedBuffer) Bytes() []byte  { return c.buf }
 
 func buildLimaYAML(cfg Config, shares []shareEntry) string {
 	var b strings.Builder
 	b.WriteString("base:\n")
-	b.WriteString("- template://default\n\n")
+	baseTmpl := cfg.LimaBaseTemplate
+	if baseTmpl == "" {
+		baseTmpl = "debian-12"
+	}
+	b.WriteString("- template:")
+	b.WriteString(baseTmpl)
+	b.WriteString("\n\n")
 	b.WriteString("vmType: \"vz\"\n")
 	b.WriteString("mountType: \"virtiofs\"\n")
 	if cfg.VMCPU > 0 {
@@ -128,6 +383,9 @@ func buildLimaYAML(cfg Config, shares []shareEntry) string {
 	b.WriteString("  system: true\n")
 	b.WriteString("  user: false\n")
 	b.WriteString("mounts:\n")
+	// Lima's base templates mount "~" read-only by default. We want the Guest layer to see shared dirs as writable,
+	// so per-service rw bind mounts can work while the container layer enforces default RO.
+	b.WriteString("- location: \"~\"\n  writable: true\n")
 	for _, e := range shares {
 		b.WriteString("- location: ")
 		b.WriteString(yamlQuote(e.CanonicalHostPath))

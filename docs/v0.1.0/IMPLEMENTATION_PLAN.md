@@ -311,12 +311,12 @@ v1 关键配置项（示例）：
 请求：
 
 ```json
-{"ref":"registry.nous.ai/claude-agent-service:0.1.0"}
+{"ref":"docker.io/gravtice/nous-claude-agent-service:0.1.0"}
 ```
 
 约束：
 
-- `ref` 必须以 `NOUS_AGENT_RUNNER_REGISTRY_BASE` 为前缀，否则拒绝（`REGISTRY_NOT_ALLOWED`）。
+- `ref` 会先做 canonicalize（例如 `gravtice/...` 视为 `docker.io/gravtice/...`），再校验其必须以 `NOUS_AGENT_RUNNER_REGISTRY_BASE` 为前缀，否则拒绝（`REGISTRY_NOT_ALLOWED`）。
 
 `POST /v1/images/import`
 
@@ -333,7 +333,7 @@ v1 关键配置项（示例）：
 ```json
 {
   "type": "claude",
-  "image_ref": "registry.nous.ai/claude-agent-service:0.1.0",
+  "image_ref": "docker.io/gravtice/nous-claude-agent-service:0.1.0",
   "resources": {"cpu_cores": 2, "memory_mb": 1024, "pids": 256},
   "rw_mounts": ["/Users/alice/Work/project/output"],
   "service_config": {

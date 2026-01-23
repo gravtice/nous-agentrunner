@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
@@ -18,10 +17,6 @@ type Server struct {
 	shares            []shareEntry
 	services          map[string]Service
 	vmRestartRequired bool
-
-	guestLocalPort int
-	guestClient    *guestClient
-	sshTunnelCmd   *exec.Cmd
 }
 
 func NewServer(cfg Config) (*Server, error) {

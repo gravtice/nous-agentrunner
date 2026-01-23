@@ -10,19 +10,28 @@ if ! command -v go >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "[1/3] build nous-agent-runnerd (darwin/arm64)"
+echo "[1/4] build nous-agent-runnerd (darwin/arm64)"
 GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
   go build -o "${DIST_DIR}/nous-agent-runnerd" "${ROOT_DIR}/cmd/nous-agent-runnerd"
 
-echo "[2/3] build nous-guest-runnerd (linux/arm64)"
+echo "[2/4] build nous-guest-runnerd (linux/arm64)"
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
   go build -o "${DIST_DIR}/nous-guest-runnerd" "${ROOT_DIR}/cmd/nous-guest-runnerd"
 
-echo "[3/3] build limactl (darwin/arm64)"
+echo "[3/4] build limactl (darwin/arm64)"
 pushd "${ROOT_DIR}/references/lima" >/dev/null
 GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
   go build -o "${DIST_DIR}/limactl" ./cmd/limactl
 popd >/dev/null
 
-echo "OK: ${DIST_DIR}"
+echo "[4/5] build lima-guestagent (linux/arm64)"
+pushd "${ROOT_DIR}/references/lima" >/dev/null
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+  go build -o "${DIST_DIR}/lima-guestagent.Linux-aarch64" ./cmd/lima-guestagent
+popd >/dev/null
 
+echo "[5/5] stage lima templates"
+rm -rf "${DIST_DIR}/lima-templates"
+ditto "${ROOT_DIR}/references/lima/templates" "${DIST_DIR}/lima-templates"
+
+echo "OK: ${DIST_DIR}"

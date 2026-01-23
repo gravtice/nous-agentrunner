@@ -3,6 +3,7 @@ import base64
 import contextlib
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Optional
@@ -10,6 +11,7 @@ from typing import Any, Optional
 from aiohttp import web
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+from claude_agent_sdk._errors import CLINotFoundError
 from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent, TextBlock
 
 
@@ -146,88 +148,104 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
 
     options = _normalize_options(service_cfg, share_dirs)
 
-    session_dir = Path(tempfile.mkdtemp(prefix=f"nous-claude-{session_id}-"))
+    session_tmp = tempfile.TemporaryDirectory(prefix=f"nous-claude-{session_id}-")
+    session_dir = Path(session_tmp.name)
 
-    async with ClaudeSDKClient(options=options) as client:
-        running: Optional[asyncio.Task[None]] = None
-        cancel_event = asyncio.Event()
+    try:
+        async with ClaudeSDKClient(options=options) as client:
+            running: Optional[asyncio.Task[None]] = None
+            cancel_event = asyncio.Event()
 
-        async def run_query(contents: list[dict[str, Any]]) -> None:
-            try:
-                cancel_event.clear()
-                prompt = _prompt_from_contents(contents, session_dir, max_inline)
-                await client.query(prompt, session_id=session_id)
+            async def run_query(contents: list[dict[str, Any]]) -> None:
+                try:
+                    cancel_event.clear()
+                    prompt = _prompt_from_contents(contents, session_dir, max_inline)
+                    await client.query(prompt, session_id=session_id)
 
-                final_text_parts: list[str] = []
-                async for m in client.receive_response():
-                    if cancel_event.is_set():
-                        break
-                    if isinstance(m, StreamEvent):
-                        delta = _stream_delta_text(m.event)
-                        if delta:
-                            final_text_parts.append(delta)
-                            await ws.send_json({"type": "response.delta", "text": delta})
-                        continue
-                    if isinstance(m, AssistantMessage):
-                        # Fallback if deltas are not available.
-                        txt = _extract_assistant_text(m)
-                        if txt:
-                            final_text_parts = [txt]
-                    if isinstance(m, ResultMessage):
-                        break
+                    final_text_parts: list[str] = []
+                    async for m in client.receive_response():
+                        if cancel_event.is_set():
+                            break
+                        if isinstance(m, StreamEvent):
+                            delta = _stream_delta_text(m.event)
+                            if delta:
+                                final_text_parts.append(delta)
+                                await ws.send_json({"type": "response.delta", "text": delta})
+                            continue
+                        if isinstance(m, AssistantMessage):
+                            # Fallback if deltas are not available.
+                            txt = _extract_assistant_text(m)
+                            if txt:
+                                final_text_parts = [txt]
+                        if isinstance(m, ResultMessage):
+                            break
 
-                final_text = "".join(final_text_parts)
-                await ws.send_json(
-                    {"type": "response.final", "contents": [{"kind": "text", "text": final_text}]}
-                )
-                await ws.send_json({"type": "done"})
-            except Exception as e:
-                await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": str(e)})
-                await ws.send_json({"type": "done"})
+                    final_text = "".join(final_text_parts)
+                    await ws.send_json(
+                        {"type": "response.final", "contents": [{"kind": "text", "text": final_text}]}
+                    )
+                    await ws.send_json({"type": "done"})
+                except Exception as e:
+                    await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": str(e)})
+                    await ws.send_json({"type": "done"})
 
-        async for msg in ws:
-            if msg.type != web.WSMsgType.TEXT:
-                continue
-            try:
-                payload = json.loads(msg.data)
-            except Exception:
-                await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "invalid json"})
-                continue
+            async for msg in ws:
+                if msg.type != web.WSMsgType.TEXT:
+                    continue
+                try:
+                    payload = json.loads(msg.data)
+                except Exception:
+                    await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "invalid json"})
+                    continue
 
-            mtype = payload.get("type")
-            if mtype == "cancel":
-                cancel_event.set()
+                mtype = payload.get("type")
+                if mtype == "cancel":
+                    cancel_event.set()
+                    if running and not running.done():
+                        await client.interrupt()
+                    continue
+
+                if mtype != "input":
+                    await ws.send_json(
+                        {"type": "error", "code": "BAD_REQUEST", "message": "unsupported message type"}
+                    )
+                    continue
+
+                contents = payload.get("contents") or []
+                if not isinstance(contents, list) or not contents:
+                    await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "contents is required"})
+                    continue
+
                 if running and not running.done():
-                    await client.interrupt()
-                continue
+                    await ws.send_json({"type": "error", "code": "BUSY", "message": "previous request still running"})
+                    continue
 
-            if mtype != "input":
-                await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "unsupported message type"})
-                continue
-
-            contents = payload.get("contents") or []
-            if not isinstance(contents, list) or not contents:
-                await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "contents is required"})
-                continue
+                running = asyncio.create_task(run_query(contents))
 
             if running and not running.done():
-                await ws.send_json({"type": "error", "code": "BUSY", "message": "previous request still running"})
-                continue
-
-            running = asyncio.create_task(run_query(contents))
-
-        if running and not running.done():
-            cancel_event.set()
-            await client.interrupt()
-            with contextlib.suppress(Exception):
-                await running
+                cancel_event.set()
+                await client.interrupt()
+                with contextlib.suppress(Exception):
+                    await running
+    except CLINotFoundError as e:
+        await ws.send_json({"type": "error", "code": "CLI_NOT_FOUND", "message": str(e)})
+        await ws.send_json({"type": "done"})
+    except Exception as e:
+        await ws.send_json({"type": "error", "code": "SERVICE_UNAVAILABLE", "message": str(e)})
+        await ws.send_json({"type": "done"})
+    finally:
+        session_tmp.cleanup()
 
     await ws.close()
     return ws
 
 
 async def health(_: web.Request) -> web.Response:
-    return web.json_response({"ok": True})
+    issues: list[str] = []
+    if shutil.which("claude") is None:
+        issues.append("claude_cli_not_found")
+    ok = len(issues) == 0
+    return web.json_response({"ok": ok, "issues": issues}, status=200 if ok else 503)
 
 
 async def run() -> None:
