@@ -146,6 +146,18 @@ public final class NousAgentRunnerClient {
         return try await requestJSON(method: "POST", path: "/v1/services", body: body, timeoutSeconds: 1800)
     }
 
+    public func listServices() async throws -> [String: Any] {
+        try await requestJSON(method: "GET", path: "/v1/services", body: nil, timeoutSeconds: 30)
+    }
+
+    public func getService(serviceID: String) async throws -> [String: Any] {
+        try await requestJSON(method: "GET", path: "/v1/services/\(serviceID)", body: nil, timeoutSeconds: 30)
+    }
+
+    public func getBuiltinTools(serviceType: String) async throws -> [String: Any] {
+        try await requestJSON(method: "GET", path: "/v1/services/types/\(serviceType)/builtin_tools", body: nil, timeoutSeconds: 30)
+    }
+
     public func deleteService(serviceID: String) async throws -> [String: Any] {
         try await requestJSON(method: "DELETE", path: "/v1/services/\(serviceID)", body: nil, timeoutSeconds: 300)
     }
