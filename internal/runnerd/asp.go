@@ -23,6 +23,11 @@ type aspAskAnswerMessage struct {
 	Answers map[string]any `json:"answers"`
 }
 
+type aspPermissionModeSetMessage struct {
+	Type string `json:"type"`
+	Mode string `json:"mode"`
+}
+
 type aspContent struct {
 	Kind   string     `json:"kind"`
 	Text   string     `json:"text,omitempty"`
@@ -57,6 +62,21 @@ func (s *Server) validateClientASPMessage(raw []byte) error {
 			return errors.New("answers is required")
 		}
 		return nil
+	case "permission_mode.set":
+		var in aspPermissionModeSetMessage
+		if err := json.Unmarshal(raw, &in); err != nil {
+			return err
+		}
+		mode := strings.TrimSpace(in.Mode)
+		if mode == "" {
+			return errors.New("mode is required")
+		}
+		switch mode {
+		case "default", "acceptEdits", "plan", "bypassPermissions":
+			return nil
+		default:
+			return fmt.Errorf("unsupported permission mode %q", mode)
+		}
 	case "input":
 		var in aspInputMessage
 		if err := json.Unmarshal(raw, &in); err != nil {
