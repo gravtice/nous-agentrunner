@@ -110,6 +110,11 @@ Runner 会原样转发底层 Agent Service 的事件（除去重复的 `session.
 {"type":"response.thinking.delta","text":"..."}
 ```
 
+开启方式（claude service）：
+
+- 推荐：在 `service_config` 中设置 `max_thinking_tokens`（对应 Claude Agent SDK 的 `ClaudeAgentOptions.max_thinking_tokens`，最终会转成 `claude --max-thinking-tokens`）。
+- 兼容：在创建 service 时设置环境变量 `MAX_THINKING_TOKENS`（Runner 会在未显式设置 `max_thinking_tokens` 时自动映射）。
+
 可选字段：
 
 - `reset=true`：表示思考内容发生“重置/替换”，客户端应清空已累计的 thinking 再追加 `text`。

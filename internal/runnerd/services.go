@@ -29,16 +29,20 @@ type serviceResources struct {
 }
 
 func effectiveServiceState(vmState, serviceState string) string {
+	vmState = strings.TrimSpace(strings.ToLower(vmState))
 	switch vmState {
 	case "running":
 		if strings.TrimSpace(serviceState) == "" {
 			return "unknown"
 		}
 		return serviceState
+	case "stopped", "not_created":
+		return "stopped"
 	case "unknown":
 		return "unknown"
 	default:
-		return "stopped"
+		// Transitional states like "starting" are not reliably actionable for services yet.
+		return "unknown"
 	}
 }
 
@@ -77,6 +81,20 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error(), nil)
 		return
+	}
+
+	// Claude Agent SDK does not read MAX_THINKING_TOKENS from env directly; it expects
+	// ClaudeAgentOptions.max_thinking_tokens (forwarded to `claude --max-thinking-tokens`).
+	// For convenience, map the env var into service_config unless explicitly set by the caller.
+	if v, ok := env["MAX_THINKING_TOKENS"]; ok {
+		if _, exists := req.ServiceConfig["max_thinking_tokens"]; !exists {
+			if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
+				if req.ServiceConfig == nil {
+					req.ServiceConfig = map[string]any{}
+				}
+				req.ServiceConfig["max_thinking_tokens"] = n
+			}
+		}
 	}
 
 	// Validate mcp_servers path if provided as a string.
