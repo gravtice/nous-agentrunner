@@ -17,6 +17,12 @@ type aspInputMessage struct {
 	Contents []aspContent `json:"contents"`
 }
 
+type aspAskAnswerMessage struct {
+	Type    string         `json:"type"`
+	AskID   string         `json:"ask_id"`
+	Answers map[string]any `json:"answers"`
+}
+
 type aspContent struct {
 	Kind   string     `json:"kind"`
 	Text   string     `json:"text,omitempty"`
@@ -38,6 +44,18 @@ func (s *Server) validateClientASPMessage(raw []byte) error {
 	}
 	switch base.Type {
 	case "cancel":
+		return nil
+	case "ask.answer":
+		var in aspAskAnswerMessage
+		if err := json.Unmarshal(raw, &in); err != nil {
+			return err
+		}
+		if strings.TrimSpace(in.AskID) == "" {
+			return errors.New("ask_id is required")
+		}
+		if in.Answers == nil {
+			return errors.New("answers is required")
+		}
 		return nil
 	case "input":
 		var in aspInputMessage

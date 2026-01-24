@@ -101,8 +101,14 @@ func TestM4_ValidateClientASPMessage_CancelAndInvalid(t *testing.T) {
 	if err := s.validateClientASPMessage([]byte(`{"type":"cancel"}`)); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
+	if err := s.validateClientASPMessage([]byte(`{"type":"ask.answer","ask_id":"ask_x","answers":{"q":"a"}}`)); err != nil {
+		t.Fatalf("ask.answer: %v", err)
+	}
 	if err := s.validateClientASPMessage([]byte(`{"type":"input","contents":[]}`)); err == nil {
 		t.Fatalf("expected error for empty contents")
+	}
+	if err := s.validateClientASPMessage([]byte(`{"type":"ask.answer","ask_id":"","answers":{}}`)); err == nil {
+		t.Fatalf("expected error for missing ask_id")
 	}
 	if err := s.validateClientASPMessage([]byte(`{"type":"nope"}`)); err == nil {
 		t.Fatalf("expected error for unsupported message type")
