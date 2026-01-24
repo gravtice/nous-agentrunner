@@ -898,26 +898,26 @@ struct ContentView: View {
                 }
             case .success(let msg):
                 switch msg {
-	                case .string(let s):
-	                    DispatchQueue.main.async {
-	                        guard generation == wsGeneration else { return }
-	                        guard let data = s.data(using: .utf8),
-	                              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-	                              let type = obj["type"] as? String
-	                        else {
-	                            chatOutput += s + "\n"
-	                            return
-	                        }
-	
-	                        // Keep a raw event log (excluding high-volume deltas).
-	                        if type != "response.delta", type != "response.thinking.delta" {
-	                            debugEvents += s + "\n"
-	                        }
+                case .string(let s):
+                    DispatchQueue.main.async {
+                        guard generation == wsGeneration else { return }
+                        guard let data = s.data(using: .utf8),
+                              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                              let type = obj["type"] as? String
+                        else {
+                            chatOutput += s + "\n"
+                            return
+                        }
 
-	                        switch type {
-	                        case "session.started":
-	                            statusText = "WS connected"
-	                        case "response.delta":
+                        // Keep a raw event log (excluding high-volume deltas).
+                        if type != "response.delta" && type != "response.thinking.delta" {
+                            debugEvents += s + "\n"
+                        }
+
+                        switch type {
+                        case "session.started":
+                            statusText = "WS connected"
+                        case "response.delta":
                             if let t = obj["text"] as? String {
                                 chatOutput += t
                             }
@@ -925,14 +925,14 @@ struct ContentView: View {
                             if (obj["reset"] as? Bool) == true {
                                 debugThinking = ""
                             }
-	                            if let t = obj["text"] as? String {
-	                                debugThinking += t
-	                            }
-	                        case "tool.use", "tool.result", "response.usage", "permission_mode.updated":
-	                            if type == "tool.use" {
-	                                let name = obj["name"] as? String ?? ""
-	                                let id = obj["id"] as? String ?? ""
-	                                let suffix = id.isEmpty ? "" : " (\(id))"
+                            if let t = obj["text"] as? String {
+                                debugThinking += t
+                            }
+                        case "tool.use", "tool.result", "response.usage", "permission_mode.updated":
+                            if type == "tool.use" {
+                                let name = obj["name"] as? String ?? ""
+                                let id = obj["id"] as? String ?? ""
+                                let suffix = id.isEmpty ? "" : " (\(id))"
                                 if !name.isEmpty {
                                     lastToolSummary = name + suffix
                                 }
@@ -956,16 +956,16 @@ struct ContentView: View {
                                 }
                                 lastUsageSummary = parts.joined(separator: " ")
                             }
-	                            if type == "permission_mode.updated",
-	                               let mode = obj["mode"] as? String,
-	                               let v = PermissionMode(rawValue: mode) {
-	                                permissionMode = v
-	                            }
-	                        case "agent.ask":
-	                            guard let askID = obj["ask_id"] as? String,
-	                                  let input = obj["input"] as? [String: Any],
-	                                  let rawQuestions = input["questions"] as? [[String: Any]]
-	                            else {
+                            if type == "permission_mode.updated",
+                               let mode = obj["mode"] as? String,
+                               let v = PermissionMode(rawValue: mode) {
+                                permissionMode = v
+                            }
+                        case "agent.ask":
+                            guard let askID = obj["ask_id"] as? String,
+                                  let input = obj["input"] as? [String: Any],
+                                  let rawQuestions = input["questions"] as? [[String: Any]]
+                            else {
                                 chatOutput += "\n[ASK] invalid payload\n"
                                 break
                             }
@@ -1010,14 +1010,14 @@ struct ContentView: View {
                             let code = obj["code"] as? String ?? "ERROR"
                             let msg = obj["message"] as? String ?? ""
                             chatOutput += "\n[\(code)] \(msg)\n"
-	                        case "done":
-	                            break
-	                        default:
-	                            break
-	                        }
-	                    }
-	                default:
-	                    break
+                        case "done":
+                            break
+                        default:
+                            break
+                        }
+                    }
+                default:
+                    break
                 }
                 receiveLoop(wsTask: wsTask, generation: generation)
             }
