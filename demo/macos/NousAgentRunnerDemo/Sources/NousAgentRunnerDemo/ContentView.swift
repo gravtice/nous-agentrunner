@@ -211,7 +211,9 @@ struct ContentView: View {
     @State private var chatOutput = ""
     @State private var debugThinking = ""
     @State private var debugEvents = ""
-    @State private var showDebug = false
+    @State private var lastUsageSummary = ""
+    @State private var lastToolSummary = ""
+    @State private var showDebug = true
     @State private var pendingAsk: AskRequest?
     @State private var selectedImageURL: URL?
     @State private var showImagePicker = false
@@ -518,6 +520,23 @@ struct ContentView: View {
                                 Spacer()
                             }
 
+                            if !lastUsageSummary.isEmpty || !lastToolSummary.isEmpty {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    if !lastUsageSummary.isEmpty {
+                                        Text("usage: \(lastUsageSummary)")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .textSelection(.enabled)
+                                    }
+                                    if !lastToolSummary.isEmpty {
+                                        Text("last tool: \(lastToolSummary)")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .textSelection(.enabled)
+                                    }
+                                }
+                            }
+
                             HStack {
                                 Button("Pick Image") { showImagePicker = true }
                                 if let url = selectedImageURL {
@@ -534,39 +553,43 @@ struct ContentView: View {
                             }
 
                             DisclosureGroup("Debug", isExpanded: $showDebug) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Thinking")
-                                        .font(.system(.caption, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                    ScrollView {
-                                        Text(debugThinking)
+                                HSplitView {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Thinking")
                                             .font(.system(.caption, design: .monospaced))
-                                            .textSelection(.enabled)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .padding(8)
+                                            .foregroundStyle(.secondary)
+                                        ScrollView {
+                                            Text(debugThinking)
+                                                .font(.system(.caption, design: .monospaced))
+                                                .textSelection(.enabled)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .padding(8)
+                                        }
+                                        .frame(minHeight: 120)
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(.quaternary, lineWidth: 1)
+                                        }
                                     }
-                                    .frame(minHeight: 80)
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .stroke(.quaternary, lineWidth: 1)
-                                    }
-
-                                    Text("Events")
-                                        .font(.system(.caption, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                    ScrollView {
-                                        Text(debugEvents)
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Events")
                                             .font(.system(.caption, design: .monospaced))
-                                            .textSelection(.enabled)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .padding(8)
-                                    }
-                                    .frame(minHeight: 80)
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .stroke(.quaternary, lineWidth: 1)
+                                            .foregroundStyle(.secondary)
+                                        ScrollView {
+                                            Text(debugEvents)
+                                                .font(.system(.caption, design: .monospaced))
+                                                .textSelection(.enabled)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .padding(8)
+                                        }
+                                        .frame(minHeight: 120)
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(.quaternary, lineWidth: 1)
+                                        }
                                     }
                                 }
+                                .frame(minHeight: 140)
                                 .padding(.top, 4)
                             }
                         }
@@ -706,6 +729,7 @@ struct ContentView: View {
             let c = try client()
             _ = try await c.restartVM()
             await refreshStatus()
+            await refreshServices()
         } catch {
             statusText = "Error: \(error)"
         }
@@ -806,6 +830,8 @@ struct ContentView: View {
             chatOutput = ""
             debugThinking = ""
             debugEvents = ""
+            lastUsageSummary = ""
+            lastToolSummary = ""
             await refreshServices()
             if let serviceID {
                 connectWS(serviceID: serviceID)
@@ -899,6 +925,33 @@ struct ContentView: View {
                             }
                         case "tool.use", "tool.result", "response.usage", "permission_mode.updated":
                             debugEvents += s + "\n"
+                            if type == "tool.use" {
+                                let name = obj["name"] as? String ?? ""
+                                let id = obj["id"] as? String ?? ""
+                                let suffix = id.isEmpty ? "" : " (\(id))"
+                                if !name.isEmpty {
+                                    lastToolSummary = name + suffix
+                                }
+                            }
+                            if type == "response.usage" {
+                                var parts: [String] = []
+                                if let usage = obj["usage"] as? [String: Any] {
+                                    let inTok = usage["input_tokens"] as? Int
+                                    let outTok = usage["output_tokens"] as? Int
+                                    if let inTok { parts.append("in=\(inTok)") }
+                                    if let outTok { parts.append("out=\(outTok)") }
+                                }
+                                if let cost = obj["total_cost_usd"] as? Double {
+                                    parts.append(String(format: "$%.4f", cost))
+                                }
+                                if let dur = obj["duration_ms"] as? Int {
+                                    parts.append("dur=\(dur)ms")
+                                }
+                                if let apiDur = obj["duration_api_ms"] as? Int {
+                                    parts.append("api=\(apiDur)ms")
+                                }
+                                lastUsageSummary = parts.joined(separator: " ")
+                            }
                             if type == "permission_mode.updated",
                                let mode = obj["mode"] as? String,
                                let v = PermissionMode(rawValue: mode) {
