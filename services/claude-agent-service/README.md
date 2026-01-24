@@ -6,7 +6,7 @@
 
 - `GET /health`
 - `WS /v1/chat`（一条连接=一个 session）
-  - 事件：`response.delta` / `response.final` / `response.thinking.delta` / `tool.use` / `tool.result` / `response.usage` / `error` / `done`
+  - 事件：`response.delta` / `response.final` / `response.thinking.delta` / `tool.use` / `tool.result` / `agent.ask` / `response.usage` / `error` / `done`
 
 运行时约定（由 `nous-guest-runnerd` 注入）：
 

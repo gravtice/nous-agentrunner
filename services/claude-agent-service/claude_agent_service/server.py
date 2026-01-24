@@ -13,11 +13,15 @@ from aiohttp import web
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk._errors import CLINotFoundError
 from claude_agent_sdk.types import (
+    AgentDefinition,
     AssistantMessage,
+    PermissionResultAllow,
+    PermissionResultDeny,
     ResultMessage,
     StreamEvent,
     TextBlock,
     ThinkingBlock,
+    ToolPermissionContext,
     ToolResultBlock,
     ToolUseBlock,
     UserMessage,
@@ -71,10 +75,89 @@ def _merge_add_dirs(cfg: dict[str, Any], share_dirs: list[str]) -> None:
         cfg["add_dirs"] = v
 
 
+def _normalize_string_list(v: Any, field: str) -> list[str]:
+    if v is None:
+        return []
+    if not isinstance(v, list):
+        raise ValueError(f"{field} must be an array")
+    out: list[str] = []
+    for raw in v:
+        if not isinstance(raw, str):
+            raise ValueError(f"{field} must be an array of strings")
+        s = raw.strip()
+        if s:
+            out.append(s)
+    return out
+
+
+def _normalize_setting_sources(cfg: dict[str, Any]) -> None:
+    v = cfg.get("setting_sources")
+    if v is None:
+        cfg["setting_sources"] = ["project"]
+        return
+    sources = _normalize_string_list(v, "setting_sources")
+    allowed = {"user", "project", "local"}
+    for s in sources:
+        if s not in allowed:
+            raise ValueError("setting_sources must be one of: user, project, local")
+    cfg["setting_sources"] = sources
+
+
+def _normalize_agents(cfg: dict[str, Any]) -> None:
+    v = cfg.get("agents")
+    if v is None:
+        return
+    if not isinstance(v, dict):
+        raise ValueError("agents must be an object")
+
+    allowed_models = {"sonnet", "opus", "haiku", "inherit"}
+    out: dict[str, AgentDefinition] = {}
+    for name, raw in v.items():
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("agents keys must be non-empty strings")
+        if not isinstance(raw, dict):
+            raise ValueError(f"agent {name!r} must be an object")
+
+        description = raw.get("description")
+        prompt = raw.get("prompt")
+        if not isinstance(description, str) or not description.strip():
+            raise ValueError(f"agent {name!r} description is required")
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError(f"agent {name!r} prompt is required")
+
+        tools: list[str] | None = None
+        if raw.get("tools") is not None:
+            tools = _normalize_string_list(raw.get("tools"), f"agents.{name}.tools")
+            if len(tools) == 0:
+                tools = None
+
+        model = raw.get("model")
+        if model is not None:
+            if not isinstance(model, str) or not model.strip():
+                raise ValueError(f"agent {name!r} model must be a non-empty string")
+            if model not in allowed_models:
+                raise ValueError(f"agent {name!r} model must be one of: sonnet, opus, haiku, inherit")
+
+        out[name] = AgentDefinition(
+            description=description,
+            prompt=prompt,
+            tools=tools,
+            model=model,
+        )
+
+    cfg["agents"] = out
+
+
 def _normalize_options(cfg: dict[str, Any], share_dirs: list[str]) -> ClaudeAgentOptions:
     cfg = dict(cfg)
     cfg.setdefault("include_partial_messages", True)
     cfg.setdefault("permission_mode", "bypassPermissions")
+    _normalize_setting_sources(cfg)
+    if "allowed_tools" in cfg:
+        cfg["allowed_tools"] = _normalize_string_list(cfg.get("allowed_tools"), "allowed_tools")
+    if "disallowed_tools" in cfg:
+        cfg["disallowed_tools"] = _normalize_string_list(cfg.get("disallowed_tools"), "disallowed_tools")
+    _normalize_agents(cfg)
     _merge_add_dirs(cfg, share_dirs)
     return ClaudeAgentOptions(**cfg)
 
@@ -155,6 +238,7 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
     await ws.send_json({"type": "session.started", "session_id": session_id})
 
     max_inline = _env_int("NOUS_MAX_INLINE_BYTES", 8 * 1024 * 1024)
+    ask_timeout_seconds = float(os.getenv("NOUS_ASK_TIMEOUT_SECONDS", "300") or "300")
     share_dirs = _load_b64_json_env("NOUS_SHARE_DIRS_B64", [])
     if not isinstance(share_dirs, list):
         share_dirs = []
@@ -167,12 +251,52 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
         await ws.close()
         return ws
 
-    options = _normalize_options(service_cfg, share_dirs)
+    try:
+        options = _normalize_options(service_cfg, share_dirs)
+    except Exception as e:
+        await ws.send_json({"type": "error", "code": "BAD_CONFIG", "message": str(e)})
+        await ws.close()
+        return ws
 
     session_tmp = tempfile.TemporaryDirectory(prefix=f"nous-claude-{session_id}-")
     session_dir = Path(session_tmp.name)
 
     try:
+        pending_asks: dict[str, asyncio.Future[dict[str, Any]]] = {}
+
+        def cancel_pending_asks() -> None:
+            for fut in pending_asks.values():
+                if not fut.done():
+                    fut.cancel()
+            pending_asks.clear()
+
+        async def can_use_tool(
+            tool_name: str, input_data: dict[str, Any], _: ToolPermissionContext
+        ) -> PermissionResultAllow | PermissionResultDeny:
+            if tool_name != "AskUserQuestion":
+                return PermissionResultAllow()
+
+            ask_id = "ask_" + os.urandom(8).hex()
+            fut: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+            pending_asks[ask_id] = fut
+            try:
+                await ws.send_json({"type": "agent.ask", "ask_id": ask_id, "input": input_data})
+                answers = await asyncio.wait_for(fut, timeout=ask_timeout_seconds)
+                questions = input_data.get("questions", [])
+                if not isinstance(questions, list):
+                    questions = []
+                return PermissionResultAllow(updated_input={"questions": questions, "answers": answers})
+            except asyncio.TimeoutError:
+                return PermissionResultDeny(message="ask timeout", interrupt=True)
+            except asyncio.CancelledError:
+                return PermissionResultDeny(message="ask cancelled", interrupt=True)
+            except Exception as e:
+                return PermissionResultDeny(message=str(e), interrupt=True)
+            finally:
+                pending_asks.pop(ask_id, None)
+
+        options.can_use_tool = can_use_tool
+
         async with ClaudeSDKClient(options=options) as client:
             running: Optional[asyncio.Task[None]] = None
             cancel_event = asyncio.Event()
@@ -347,8 +471,25 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                 mtype = payload.get("type")
                 if mtype == "cancel":
                     cancel_event.set()
+                    cancel_pending_asks()
                     if running and not running.done():
                         await client.interrupt()
+                    continue
+
+                if mtype == "ask.answer":
+                    ask_id = payload.get("ask_id")
+                    answers = payload.get("answers")
+                    if not isinstance(ask_id, str) or ask_id.strip() == "":
+                        await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "ask_id is required"})
+                        continue
+                    if not isinstance(answers, dict):
+                        await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "answers must be an object"})
+                        continue
+                    fut = pending_asks.get(ask_id)
+                    if fut is None or fut.done():
+                        await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "unknown ask_id"})
+                        continue
+                    fut.set_result({str(k): str(v) for k, v in answers.items()})
                     continue
 
                 if mtype != "input":
@@ -370,6 +511,7 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
 
             if running and not running.done():
                 cancel_event.set()
+                cancel_pending_asks()
                 await client.interrupt()
                 with contextlib.suppress(Exception):
                     await running
