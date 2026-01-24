@@ -492,6 +492,24 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                     fut.set_result({str(k): str(v) for k, v in answers.items()})
                     continue
 
+                if mtype == "permission_mode.set":
+                    mode = payload.get("mode")
+                    if not isinstance(mode, str) or mode.strip() == "":
+                        await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "mode is required"})
+                        continue
+                    mode = mode.strip()
+                    if mode not in {"default", "acceptEdits", "plan", "bypassPermissions"}:
+                        await ws.send_json(
+                            {"type": "error", "code": "BAD_REQUEST", "message": f"unsupported mode: {mode!r}"}
+                        )
+                        continue
+                    try:
+                        await client.set_permission_mode(mode)
+                        await ws.send_json({"type": "permission_mode.updated", "mode": mode})
+                    except Exception as e:
+                        await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": str(e)})
+                    continue
+
                 if mtype != "input":
                     await ws.send_json(
                         {"type": "error", "code": "BAD_REQUEST", "message": "unsupported message type"}
