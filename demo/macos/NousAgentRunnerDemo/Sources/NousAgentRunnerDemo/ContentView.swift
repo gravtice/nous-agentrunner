@@ -295,278 +295,289 @@ struct ContentView: View {
                 }
             }
 
-            GroupBox("Services") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Button("Load Builtin Tools") { Task { await refreshBuiltinTools() } }
-                        Spacer()
-                        Text("count: \(services.count)")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 6) {
-                            ForEach(services.indices, id: \.self) { i in
-                                let svc = services[i]
-                                let sid = svc["service_id"] as? String ?? ""
-                                let typ = svc["type"] as? String ?? ""
-                                let state = svc["state"] as? String ?? ""
-                                let createdAt = svc["created_at"] as? String ?? ""
-                                HStack(spacing: 10) {
-                                    Text(sid.isEmpty ? "(missing service_id)" : sid)
-                                        .font(.system(.caption, design: .monospaced))
-                                        .textSelection(.enabled)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
+            HSplitView {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        GroupBox("Services") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Button("Load Builtin Tools") { Task { await refreshBuiltinTools() } }
                                     Spacer()
-                                    Text("\(typ) \(state)")
+                                    Text("count: \(services.count)")
                                         .font(.system(.caption, design: .monospaced))
                                         .foregroundStyle(.secondary)
-                                    if !createdAt.isEmpty {
-                                        Text(createdAt)
-                                            .font(.system(.caption2, design: .monospaced))
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                    Button("Use") { serviceID = sid }
-                                        .disabled(sid.isEmpty)
-                                    Button("Connect") { connectWS(serviceID: sid) }
-                                        .disabled(sid.isEmpty)
-                                    Button("Delete") { Task { await deleteService(serviceID: sid) } }
-                                        .disabled(sid.isEmpty)
                                 }
-                            }
-                            if services.isEmpty {
-                                Text("(no services)")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(minHeight: 120)
-                }
-            }
-
-            GroupBox("Create Service") {
-                VStack(alignment: .leading, spacing: 10) {
-                    TextField("image_ref", text: $imageRef)
-                    TextField("rw_mount (optional)", text: $rwMount)
-
-                    HStack(alignment: .top) {
-                        Text("system_prompt")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                        Picker("", selection: $systemPromptMode) {
-                            Text("builtin (claude_code)").tag(SystemPromptMode.builtin)
-                            Text("custom").tag(SystemPromptMode.custom)
-                        }
-                        .pickerStyle(.segmented)
-                    }
-
-                    if systemPromptMode == .custom {
-                        TextEditor(text: $systemPromptCustom)
-                            .font(.system(.caption, design: .monospaced))
-                            .frame(minHeight: 70)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(.quaternary, lineWidth: 1)
-                            }
-                    } else {
-                        TextField("append_system_prompt (optional)", text: $systemPromptAppend)
-                            .font(.system(.caption, design: .monospaced))
-                    }
-
-                    HStack {
-                        Text("permission_mode")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                        Picker("", selection: $permissionMode) {
-                            ForEach(PermissionMode.allCases) { m in
-                                Text(m.rawValue).tag(m)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        Spacer()
-                    }
-
-                    HStack {
-                        Button("Pick Work Dir") { showWorkDirPicker = true }
-                        if let url = selectedWorkDirURL {
-                            Text("selected_work_dir: \(url.path)")
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Button("Open") { openWorkDir(url.path) }
-                            Button("Clear") { selectedWorkDirURL = nil }
-                        } else {
-                            Text("selected_work_dir: (auto)")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    if let workDirPath {
-                        HStack {
-                            Text("work_dir: \(workDirPath)")
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                            Button("Open Work Dir") { openWorkDir(workDirPath) }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("mcp_servers (json/path)")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button("Sample") { mcpServersText = Self.sampleMcpServersJSON }
-                            Button("Clear") { mcpServersText = "" }
-                        }
-                        TextEditor(text: $mcpServersText)
-                            .font(.system(.caption, design: .monospaced))
-                            .frame(minHeight: 90)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(.quaternary, lineWidth: 1)
-                            }
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Toggle("restrict allowed_tools", isOn: $restrictTools)
-                        if restrictTools {
-                            if builtinTools.isEmpty {
-                                Text("builtin_tools not loaded (click Load Builtin Tools)")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                            } else {
                                 ScrollView {
-                                    LazyVStack(alignment: .leading, spacing: 4) {
-                                        ForEach(builtinTools, id: \.self) { name in
-                                            Toggle(isOn: bindingForAllowedTool(name)) {
-                                                Text(name)
+                                    LazyVStack(alignment: .leading, spacing: 6) {
+                                        ForEach(services.indices, id: \.self) { i in
+                                            let svc = services[i]
+                                            let sid = svc["service_id"] as? String ?? ""
+                                            let typ = svc["type"] as? String ?? ""
+                                            let state = svc["state"] as? String ?? ""
+                                            let createdAt = svc["created_at"] as? String ?? ""
+                                            HStack(spacing: 10) {
+                                                Text(sid.isEmpty ? "(missing service_id)" : sid)
                                                     .font(.system(.caption, design: .monospaced))
+                                                    .textSelection(.enabled)
+                                                    .lineLimit(1)
+                                                    .truncationMode(.middle)
+                                                Spacer()
+                                                Text("\(typ) \(state)")
+                                                    .font(.system(.caption, design: .monospaced))
+                                                    .foregroundStyle(.secondary)
+                                                if !createdAt.isEmpty {
+                                                    Text(createdAt)
+                                                        .font(.system(.caption2, design: .monospaced))
+                                                        .foregroundStyle(.secondary)
+                                                        .lineLimit(1)
+                                                }
+                                                Button("Use") { serviceID = sid }
+                                                    .disabled(sid.isEmpty)
+                                                Button("Connect") { connectWS(serviceID: sid) }
+                                                    .disabled(sid.isEmpty)
+                                                Button("Delete") { Task { await deleteService(serviceID: sid) } }
+                                                    .disabled(sid.isEmpty)
                                             }
+                                        }
+                                        if services.isEmpty {
+                                            Text("(no services)")
+                                                .font(.system(.caption, design: .monospaced))
+                                                .foregroundStyle(.secondary)
                                         }
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 }
-                                .frame(minHeight: 80)
+                                .frame(minHeight: 120)
                             }
-                            TextField("extra allowed_tools (comma/newline separated)", text: $extraAllowedToolsText)
-                                .font(.system(.caption, design: .monospaced))
+                        }
+
+                        GroupBox("Create Service") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                TextField("image_ref", text: $imageRef)
+                                TextField("rw_mount (optional)", text: $rwMount)
+
+                                HStack(alignment: .top) {
+                                    Text("system_prompt")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    Picker("", selection: $systemPromptMode) {
+                                        Text("builtin (claude_code)").tag(SystemPromptMode.builtin)
+                                        Text("custom").tag(SystemPromptMode.custom)
+                                    }
+                                    .pickerStyle(.segmented)
+                                }
+
+                                if systemPromptMode == .custom {
+                                    TextEditor(text: $systemPromptCustom)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .frame(minHeight: 70)
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(.quaternary, lineWidth: 1)
+                                        }
+                                } else {
+                                    TextField("append_system_prompt (optional)", text: $systemPromptAppend)
+                                        .font(.system(.caption, design: .monospaced))
+                                }
+
+                                HStack {
+                                    Text("permission_mode")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    Picker("", selection: $permissionMode) {
+                                        ForEach(PermissionMode.allCases) { m in
+                                            Text(m.rawValue).tag(m)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    Spacer()
+                                }
+
+                                HStack {
+                                    Button("Pick Work Dir") { showWorkDirPicker = true }
+                                    if let url = selectedWorkDirURL {
+                                        Text("selected_work_dir: \(url.path)")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .textSelection(.enabled)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                        Button("Open") { openWorkDir(url.path) }
+                                        Button("Clear") { selectedWorkDirURL = nil }
+                                    } else {
+                                        Text("selected_work_dir: (auto)")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                if let workDirPath {
+                                    HStack {
+                                        Text("work_dir: \(workDirPath)")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .textSelection(.enabled)
+                                        Button("Open Work Dir") { openWorkDir(workDirPath) }
+                                    }
+                                }
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        Text("mcp_servers (json/path)")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                        Spacer()
+                                        Button("Sample") { mcpServersText = Self.sampleMcpServersJSON }
+                                        Button("Clear") { mcpServersText = "" }
+                                    }
+                                    TextEditor(text: $mcpServersText)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .frame(minHeight: 90)
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(.quaternary, lineWidth: 1)
+                                        }
+                                }
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Toggle("restrict allowed_tools", isOn: $restrictTools)
+                                    if restrictTools {
+                                        if builtinTools.isEmpty {
+                                            Text("builtin_tools not loaded (click Load Builtin Tools)")
+                                                .font(.system(.caption, design: .monospaced))
+                                                .foregroundStyle(.secondary)
+                                        } else {
+                                            ScrollView {
+                                                LazyVStack(alignment: .leading, spacing: 4) {
+                                                    ForEach(builtinTools, id: \.self) { name in
+                                                        Toggle(isOn: bindingForAllowedTool(name)) {
+                                                            Text(name)
+                                                                .font(.system(.caption, design: .monospaced))
+                                                        }
+                                                    }
+                                                }
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                            }
+                                            .frame(minHeight: 80)
+                                        }
+                                        TextField("extra allowed_tools (comma/newline separated)", text: $extraAllowedToolsText)
+                                            .font(.system(.caption, design: .monospaced))
+                                    }
+                                }
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("agents (JSON object; optional)")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    TextEditor(text: $agentsText)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .frame(minHeight: 90)
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(.quaternary, lineWidth: 1)
+                                        }
+                                }
+
+                                if let serviceID {
+                                    Text("service_id: \(serviceID)")
+                                        .font(.system(.body, design: .monospaced))
+                                }
+                            }
                         }
                     }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("agents (JSON object; optional)")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                        TextEditor(text: $agentsText)
-                            .font(.system(.caption, design: .monospaced))
-                            .frame(minHeight: 90)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(.quaternary, lineWidth: 1)
-                            }
-                    }
-
-                    if let serviceID {
-                        Text("service_id: \(serviceID)")
-                            .font(.system(.body, design: .monospaced))
-                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
                 }
-            }
+                .frame(minWidth: 420, idealWidth: 460, maxWidth: 560)
 
-            GroupBox("Chat") {
-                VStack(alignment: .leading) {
-                    ScrollView {
-                        Text(chatOutput)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                    }
-                    .frame(minHeight: 200)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(.quaternary, lineWidth: 1)
-                    }
-
-                    HStack {
-                        Text("permission_mode")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                        Picker("", selection: $permissionMode) {
-                            ForEach(PermissionMode.allCases) { m in
-                                Text(m.rawValue).tag(m)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        Button("Apply") { sendPermissionModeSet(mode: permissionMode) }
-                            .disabled(wsTask == nil)
-                        Spacer()
-                    }
-
-                    HStack {
-                        Button("Pick Image") { showImagePicker = true }
-                        if let url = selectedImageURL {
-                            Text(url.lastPathComponent)
-                                .font(.system(.caption, design: .monospaced))
-                            Button("Clear") { selectedImageURL = nil }
-                        }
-                        TextField("message", text: $chatInput)
-                            .submitLabel(.send)
-                            .onSubmit { sendChat() }
-                        Button("Send") { sendChat() }
-                            .keyboardShortcut(.return, modifiers: [])
-                            .disabled(!canSend)
-                    }
-
-                    DisclosureGroup("Debug", isExpanded: $showDebug) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Thinking")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 12) {
+                    GroupBox("Chat") {
+                        VStack(alignment: .leading) {
                             ScrollView {
-                                Text(debugThinking)
-                                    .font(.system(.caption, design: .monospaced))
+                                Text(chatOutput)
+                                    .font(.system(.body, design: .monospaced))
                                     .textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(8)
                             }
-                            .frame(minHeight: 80)
+                            .frame(minHeight: 200, maxHeight: .infinity)
                             .overlay {
                                 RoundedRectangle(cornerRadius: 6)
                                     .stroke(.quaternary, lineWidth: 1)
                             }
 
-                            Text("Events")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                            ScrollView {
-                                Text(debugEvents)
+                            HStack {
+                                Text("permission_mode")
                                     .font(.system(.caption, design: .monospaced))
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(8)
+                                    .foregroundStyle(.secondary)
+                                Picker("", selection: $permissionMode) {
+                                    ForEach(PermissionMode.allCases) { m in
+                                        Text(m.rawValue).tag(m)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                Button("Apply") { sendPermissionModeSet(mode: permissionMode) }
+                                    .disabled(wsTask == nil)
+                                Spacer()
                             }
-                            .frame(minHeight: 80)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(.quaternary, lineWidth: 1)
+
+                            HStack {
+                                Button("Pick Image") { showImagePicker = true }
+                                if let url = selectedImageURL {
+                                    Text(url.lastPathComponent)
+                                        .font(.system(.caption, design: .monospaced))
+                                    Button("Clear") { selectedImageURL = nil }
+                                }
+                                TextField("message", text: $chatInput)
+                                    .submitLabel(.send)
+                                    .onSubmit { sendChat() }
+                                Button("Send") { sendChat() }
+                                    .keyboardShortcut(.return, modifiers: [])
+                                    .disabled(!canSend)
+                            }
+
+                            DisclosureGroup("Debug", isExpanded: $showDebug) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Thinking")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    ScrollView {
+                                        Text(debugThinking)
+                                            .font(.system(.caption, design: .monospaced))
+                                            .textSelection(.enabled)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(8)
+                                    }
+                                    .frame(minHeight: 80)
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(.quaternary, lineWidth: 1)
+                                    }
+
+                                    Text("Events")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    ScrollView {
+                                        Text(debugEvents)
+                                            .font(.system(.caption, design: .monospaced))
+                                            .textSelection(.enabled)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(8)
+                                    }
+                                    .frame(minHeight: 80)
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(.quaternary, lineWidth: 1)
+                                    }
+                                }
+                                .padding(.top, 4)
                             }
                         }
-                        .padding(.top, 4)
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.leading, 4)
             }
-
-            Spacer()
         }
         .padding(16)
-        .frame(minWidth: 700, minHeight: 600)
+        .frame(minWidth: 900, minHeight: 600)
         .sheet(isPresented: $showSettings) {
             SettingsView(serviceEnvText: $serviceEnvText)
         }
