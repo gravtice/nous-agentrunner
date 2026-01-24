@@ -63,6 +63,14 @@ ASP 是 Nous Agent Runner 的**数据面**协议：用于与某个 Agent Service
 {"type":"cancel"}
 ```
 
+### 2.3 `ask.answer`
+
+回复 `agent.ask`（AskUserQuestion）：
+
+```json
+{"type":"ask.answer","ask_id":"ask_xxx","answers":{"<question>":"<answer>"}}
+```
+
 ---
 
 ## 3. Runner → Client 消息
@@ -111,7 +119,17 @@ Runner 会原样转发底层 Agent Service 的事件（除去重复的 `session.
 {"type":"tool.result","tool_use_id":"toolu_xxx","content":"...","is_error":false}
 ```
 
-### 3.5 `response.final`
+### 3.5 `agent.ask`
+
+Agent 需要用户补充信息（AskUserQuestion）时推送：
+
+```json
+{"type":"agent.ask","ask_id":"ask_xxx","input":{"questions":[{"header":"...","question":"...","options":[{"label":"...","description":"..."}]}]}}
+```
+
+客户端收到后应展示问题并回发 `ask.answer`，随后 Agent 会继续执行并产出后续事件。
+
+### 3.6 `response.final`
 
 最终输出：
 
@@ -119,7 +137,7 @@ Runner 会原样转发底层 Agent Service 的事件（除去重复的 `session.
 {"type":"response.final","contents":[{"kind":"text","text":"..."}]}
 ```
 
-### 3.6 `response.usage`
+### 3.7 `response.usage`
 
 本轮 usage/cost（通常在 `response.final` 之后、`done` 之前到达）：
 
@@ -129,7 +147,7 @@ Runner 会原样转发底层 Agent Service 的事件（除去重复的 `session.
 
 可选字段：`duration_ms`、`duration_api_ms`。
 
-### 3.7 `error`
+### 3.8 `error`
 
 错误：
 
@@ -142,7 +160,7 @@ Runner 会原样转发底层 Agent Service 的事件（除去重复的 `session.
 - Runner 侧输入校验可能返回：`PATH_NOT_ALLOWED`、`INLINE_BYTES_TOO_LARGE`、`BAD_REQUEST`
 - Service 侧可能返回其它 `code`（例如 `BUSY/CLI_NOT_FOUND/SERVICE_ERROR/SERVICE_UNAVAILABLE` 等）
 
-### 3.8 `done`
+### 3.9 `done`
 
 表示本次请求完成（无论成功或失败）：
 
@@ -158,6 +176,7 @@ Runner 会原样转发底层 Agent Service 的事件（除去重复的 `session.
 - 每次发送 `input` 后：
   - 持续消费 `response.delta`（可边到边显示）
   - 可选：消费 `response.thinking.delta` / `tool.use` / `tool.result` / `response.usage`（用于 Debug/展示/统计）
+  - 若收到 `agent.ask`：展示问题并发送 `ask.answer`，然后继续消费后续事件
   - 收到 `response.final` 后继续等待 `done`
   - 收到 `error` 后也继续等待 `done`（`claude` service 会在错误后补发 `done`）
 - 同一连接内不要并发发送多条 `input`；若上一轮未结束再次发送，`claude` service 可能返回 `{"type":"error","code":"BUSY",...}`

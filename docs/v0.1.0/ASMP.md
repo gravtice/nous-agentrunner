@@ -229,6 +229,14 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 
 ### 4.4 Services
 
+#### `GET /v1/services/types/{service_type}/builtin_tools`
+
+返回某个 service type 所支持的内置工具列表（用于 UI 做工具白名单配置）：
+
+```json
+{"type":"claude","builtin_tools":["Read","Write","Bash","AskUserQuestion"]}
+```
+
 #### `POST /v1/services`
 
 语义：
@@ -247,7 +255,12 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
   "env": {"ANTHROPIC_API_KEY": "..."},
   "service_config": {
     "cwd": "/Users/alice/Work/project",
-    "mcp_servers": "/Users/alice/Work/mcp-servers.json"
+    "mcp_servers": "/Users/alice/Work/mcp-servers.json",
+    "allowed_tools": ["Read","Glob","Grep","AskUserQuestion"],
+    "setting_sources": ["project"],
+    "agents": {
+      "reviewer": {"description":"Code reviewer","prompt":"Review the diff.","tools":["Read","Grep"],"model":"sonnet"}
+    }
   }
 }
 ```
