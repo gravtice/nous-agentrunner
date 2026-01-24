@@ -3,6 +3,7 @@ package runnerd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -25,6 +26,20 @@ type serviceResources struct {
 	CPUCores int `json:"cpu_cores"`
 	MemoryMB int `json:"memory_mb"`
 	Pids     int `json:"pids"`
+}
+
+func effectiveServiceState(vmState, serviceState string) string {
+	switch vmState {
+	case "running":
+		if strings.TrimSpace(serviceState) == "" {
+			return "unknown"
+		}
+		return serviceState
+	case "unknown":
+		return "unknown"
+	default:
+		return "stopped"
+	}
 }
 
 func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
@@ -149,10 +164,12 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleServicesList(w http.ResponseWriter, r *http.Request) {
+	vmState := s.getVMState(r)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]Service, 0, len(s.services))
 	for _, svc := range s.services {
+		svc.State = effectiveServiceState(vmState, svc.State)
 		out = append(out, svc)
 	}
 	writeJSON(w, 200, map[string]any{"services": out})
@@ -171,6 +188,8 @@ func (s *Server) handleServicesGet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "service not found", nil)
 		return
 	}
+	vmState := s.getVMState(r)
+	svc.State = effectiveServiceState(vmState, svc.State)
 	writeJSON(w, 200, svc)
 }
 
@@ -188,14 +207,27 @@ func (s *Server) handleServicesDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	vmState := s.getVMState(r)
+	if vmState != "running" && vmState != "unknown" {
+		s.mu.Lock()
+		delete(s.services, serviceID)
+		_ = s.saveServicesLocked()
+		s.mu.Unlock()
+		writeJSON(w, 200, map[string]any{"deleted": true})
+		return
+	}
+
 	gc, err := s.ensureGuestReady(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GUEST_UNAVAILABLE", err.Error(), nil)
 		return
 	}
 	if err := gc.delete(r.Context(), "/internal/services/"+serviceID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
-		return
+		var ge *guestHTTPError
+		if !errors.As(err, &ge) || ge.Status != http.StatusNotFound {
+			writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
+			return
+		}
 	}
 
 	s.mu.Lock()

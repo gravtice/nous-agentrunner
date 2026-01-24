@@ -47,6 +47,12 @@ func (s *Server) restartVM(ctx context.Context) error {
 	if recreate {
 		// Shares are configured at VM creation time; to apply share changes, recreate the instance.
 		_, _ = s.runLimactl(ctx, "delete", "-f", s.cfg.LimaInstanceName)
+		s.mu.Lock()
+		if len(s.services) > 0 {
+			clear(s.services)
+			_ = s.saveServicesLocked()
+		}
+		s.mu.Unlock()
 	}
 	// Give Lima a moment to release resources.
 	time.Sleep(500 * time.Millisecond)

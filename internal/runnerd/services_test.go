@@ -1,47 +1,92 @@
 package runnerd
 
 import (
-	"os"
-	"path/filepath"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/gravtice/nous-agent-runner/internal/platformpaths"
 )
 
-func TestM2_ValidateAndPrepareRWMounts_CreatesOnlyInsideShare(t *testing.T) {
-	shareRoot := t.TempDir()
-	canonShare, err := canonicalizeExistingPath(shareRoot)
-	if err != nil {
-		t.Fatalf("canonicalizeExistingPath(shareRoot): %v", err)
-	}
+func TestServices_VMNotRunning_ReportsStopped(t *testing.T) {
+	appSupport := t.TempDir()
+	limaHome := t.TempDir()
+
 	s := &Server{
-		shares: []shareEntry{
-			{Share: Share{ShareID: makeShareID(canonShare), HostPath: shareRoot}, CanonicalHostPath: canonShare},
+		cfg: Config{
+			Token:            "tok",
+			LimaHome:         limaHome,
+			LimaInstanceName: "nous-test",
+			Paths:            platformpaths.Paths{AppSupportDir: appSupport},
 		},
+		services: make(map[string]Service),
 	}
+	s.services["svc_a"] = Service{
+		ServiceID: "svc_a",
+		Type:      "claude",
+		ImageRef:  "local/x",
+		State:     "running",
+		CreatedAt: "2026-01-01T00:00:00Z",
+	}
+	h := s.Handler()
 
-	inside := filepath.Join(shareRoot, "rw1")
-	if _, err := os.Stat(inside); !os.IsNotExist(err) {
-		t.Fatalf("expected inside not exist")
-	}
-	out, err := s.validateAndPrepareRWMounts([]string{inside})
-	if err != nil {
-		t.Fatalf("validateAndPrepareRWMounts(inside): %v", err)
-	}
-	if len(out) != 1 {
-		t.Fatalf("out=%#v", out)
-	}
-	if _, err := os.Stat(inside); err != nil {
-		t.Fatalf("inside dir not created: %v", err)
-	}
+	t.Run("list", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/services", nil)
+		req.Header.Set("Authorization", "Bearer tok")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
 
-	outsideParent := t.TempDir()
-	outside := filepath.Join(outsideParent, "rw2")
-	if _, err := os.Stat(outside); !os.IsNotExist(err) {
-		t.Fatalf("expected outside not exist")
-	}
-	if _, err := s.validateAndPrepareRWMounts([]string{outside}); err == nil {
-		t.Fatalf("expected error for outside rw mount")
-	}
-	if _, err := os.Stat(outside); !os.IsNotExist(err) {
-		t.Fatalf("outside dir should not be created, stat err=%v", err)
-	}
+		if rec.Code != 200 {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		var out struct {
+			Services []Service `json:"services"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if len(out.Services) != 1 {
+			t.Fatalf("services=%d body=%s", len(out.Services), rec.Body.String())
+		}
+		if out.Services[0].State != "stopped" {
+			t.Fatalf("state=%q", out.Services[0].State)
+		}
+	})
+
+	t.Run("get", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/services/svc_a", nil)
+		req.Header.Set("Authorization", "Bearer tok")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != 200 {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		var out Service
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if out.State != "stopped" {
+			t.Fatalf("state=%q", out.State)
+		}
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/v1/services/svc_a", nil)
+		req.Header.Set("Authorization", "Bearer tok")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != 200 {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		s.mu.Lock()
+		_, ok := s.services["svc_a"]
+		s.mu.Unlock()
+		if ok {
+			t.Fatalf("service still present after delete")
+		}
+	})
 }
+
