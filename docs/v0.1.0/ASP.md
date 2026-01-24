@@ -94,6 +94,10 @@ Runner 会原样转发底层 Agent Service 的事件（除去重复的 `session.
 
 当前首发 `claude` service 会产生以下事件类型：
 
+说明：
+
+- 这些事件由 `claude-agent-service` 产出并透传；如果你使用的是较老的 service 镜像，可能只会看到 `response.delta` / `response.final` / `done`，不会有 `response.thinking.delta` / `tool.*` / `response.usage`。
+
 ### 3.1 `response.delta`
 
 增量文本：
