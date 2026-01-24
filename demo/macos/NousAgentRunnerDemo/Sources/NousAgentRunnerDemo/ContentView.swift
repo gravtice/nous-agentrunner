@@ -5,14 +5,195 @@ import UniformTypeIdentifiers
 import AppKit
 #endif
 
+private struct AskOption: Identifiable, Hashable {
+    let id: Int
+    let label: String
+    let description: String
+}
+
+private struct AskQuestion: Identifiable, Hashable {
+    let id: Int
+    let header: String
+    let question: String
+    let options: [AskOption]
+    let multiSelect: Bool
+}
+
+private struct AskRequest: Identifiable {
+    let id: String // ask_id
+    let questions: [AskQuestion]
+}
+
+private struct AskSheetView: View {
+    let ask: AskRequest
+    let onSubmit: ([String: String]) -> Void
+    let onCancel: () -> Void
+
+    @State private var customAnswerByQuestion: [String: String] = [:]
+    @State private var selectedIndexByQuestion: [String: Int] = [:]
+    @State private var selectedIndicesByQuestion: [String: Set<Int>] = [:]
+
+    private func bindingForSingle(question: AskQuestion) -> Binding<Int> {
+        Binding(
+            get: { selectedIndexByQuestion[question.question] ?? 0 },
+            set: { selectedIndexByQuestion[question.question] = $0 }
+        )
+    }
+
+    private func bindingForMulti(question: AskQuestion, index: Int) -> Binding<Bool> {
+        Binding(
+            get: { selectedIndicesByQuestion[question.question, default: []].contains(index) },
+            set: { isOn in
+                var set = selectedIndicesByQuestion[question.question, default: []]
+                if isOn {
+                    set.insert(index)
+                } else {
+                    set.remove(index)
+                }
+                selectedIndicesByQuestion[question.question] = set
+            }
+        )
+    }
+
+    private func buildAnswers() -> [String: String] {
+        var out: [String: String] = [:]
+        for q in ask.questions {
+            let custom = (customAnswerByQuestion[q.question] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !custom.isEmpty {
+                out[q.question] = custom
+                continue
+            }
+            if q.multiSelect {
+                let indices = selectedIndicesByQuestion[q.question, default: []].sorted()
+                let labels: [String] = indices.compactMap { i -> String? in
+                    guard i >= 0 && i < q.options.count else { return nil }
+                    return q.options[i].label
+                }
+                out[q.question] = labels.joined(separator: ", ")
+            } else {
+                let idx = selectedIndexByQuestion[q.question] ?? 0
+                if idx >= 0 && idx < q.options.count {
+                    out[q.question] = q.options[idx].label
+                } else {
+                    out[q.question] = ""
+                }
+            }
+        }
+        return out
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Agent Ask")
+                .font(.title3)
+            Text("ask_id: \(ask.id)")
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(ask.questions) { q in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("\(q.header): \(q.question)")
+                                .font(.headline)
+
+                            if q.options.isEmpty {
+                                Text("No options provided.")
+                                    .foregroundStyle(.secondary)
+                            } else if q.multiSelect {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(q.options.indices, id: \.self) { i in
+                                        let opt = q.options[i]
+                                        Toggle(isOn: bindingForMulti(question: q, index: i)) {
+                                            Text("\(opt.label) — \(opt.description)")
+                                                .font(.system(.body, design: .monospaced))
+                                        }
+                                    }
+                                }
+                            } else {
+                                Picker("Options", selection: bindingForSingle(question: q)) {
+                                    ForEach(q.options.indices, id: \.self) { i in
+                                        let opt = q.options[i]
+                                        Text("\(opt.label) — \(opt.description)").tag(i)
+                                    }
+                                }
+                                .pickerStyle(.radioGroup)
+                            }
+
+                            TextField("Custom answer (optional)", text: Binding(
+                                get: { customAnswerByQuestion[q.question] ?? "" },
+                                set: { customAnswerByQuestion[q.question] = $0 }
+                            ))
+                            .textFieldStyle(.roundedBorder)
+                        }
+                        .padding(8)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(.quaternary, lineWidth: 1)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            HStack {
+                Button("Cancel") { onCancel() }
+                Spacer()
+                Button("Submit") { onSubmit(buildAnswers()) }
+                    .keyboardShortcut(.return, modifiers: [])
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 720, minHeight: 520)
+        .onAppear {
+            for q in ask.questions {
+                if !q.multiSelect, selectedIndexByQuestion[q.question] == nil {
+                    selectedIndexByQuestion[q.question] = 0
+                }
+            }
+        }
+    }
+}
+
 struct ContentView: View {
     @State private var statusText = "Not loaded"
     @State private var imageRef = "docker.io/gravtice/nous-claude-agent-service:0.1.1"
-    @State private var systemPrompt = "You are a helpful agent."
+
+    private enum SystemPromptMode: String, CaseIterable, Identifiable {
+        case builtin
+        case custom
+
+        var id: String { rawValue }
+    }
+
+    private static let sampleMcpServersJSON =
+        """
+        {
+          "genaisdk": {
+            "type": "http",
+            "url": "https://happy.zengjice.com:7001/mcp",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            }
+          }
+        }
+        """
+
+    @State private var systemPromptMode: SystemPromptMode = .custom
+    @State private var systemPromptCustom = "You are a helpful agent."
+    @State private var systemPromptAppend = ""
     @State private var rwMount = ""
     @State private var selectedWorkDirURL: URL?
     @State private var showWorkDirPicker = false
     @AppStorage("nous.demo.service_env") private var serviceEnvText = ""
+    @State private var services: [[String: Any]] = []
+    @State private var builtinTools: [String] = []
+    @State private var restrictTools = false
+    @State private var allowedTools = Set<String>()
+    @State private var extraAllowedToolsText = ""
+    @State private var mcpServersText = ""
+    @State private var agentsText = ""
     @State private var showSettings = false
     @State private var serviceID: String?
     @State private var workDirPath: String?
@@ -21,6 +202,7 @@ struct ContentView: View {
     @State private var debugThinking = ""
     @State private var debugEvents = ""
     @State private var showDebug = false
+    @State private var pendingAsk: AskRequest?
     @State private var selectedImageURL: URL?
     @State private var showImagePicker = false
     @State private var isSending = false
@@ -41,6 +223,44 @@ struct ContentView: View {
         return false
     }
 
+    private func bindingForAllowedTool(_ name: String) -> Binding<Bool> {
+        Binding(
+            get: { allowedTools.contains(name) },
+            set: { isOn in
+                if isOn {
+                    allowedTools.insert(name)
+                } else {
+                    allowedTools.remove(name)
+                }
+            }
+        )
+    }
+
+    private func parseCommaNewlineList(_ text: String) -> [String] {
+        let raw = text
+            .split(whereSeparator: { $0 == "," || $0 == "\n" || $0 == "\r" })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        var seen = Set<String>()
+        var out: [String] = []
+        for s in raw where !seen.contains(s) {
+            seen.insert(s)
+            out.append(s)
+        }
+        return out
+    }
+
+    private func parseJSONObjectText(_ text: String) throws -> [String: Any] {
+        guard let data = text.data(using: .utf8) else {
+            throw NousAgentRunnerError.invalidConfig("invalid utf-8")
+        }
+        let obj = try JSONSerialization.jsonObject(with: data)
+        guard let dict = obj as? [String: Any] else {
+            throw NousAgentRunnerError.invalidConfig("json must be an object")
+        }
+        return dict
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Nous Agent Runner Demo")
@@ -53,21 +273,100 @@ struct ContentView: View {
 
             HStack {
                 Button("Refresh Status") { Task { await refreshStatus() } }
+                Button("Refresh Services") { Task { await refreshServices() } }
                 Button("Restart VM") { Task { await restartVM() } }
-                Button("Create Claude Service") { Task { await createService() } }
+                Button("Create Service") { Task { await createService() } }
                 Button("Settings") { showSettings = true }
                 Button("Open Logs") { openRunnerLogs() }
                 Button("Open VM Logs") { openVMLogs() }
                 if let serviceID {
                     Button("Connect WS") { connectWS(serviceID: serviceID) }
+                    Button("Delete Service") { Task { await deleteService(serviceID: serviceID) } }
                 }
             }
 
-            GroupBox("Service") {
-                VStack(alignment: .leading) {
+            GroupBox("Services") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Button("Load Builtin Tools") { Task { await refreshBuiltinTools() } }
+                        Spacer()
+                        Text("count: \(services.count)")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 6) {
+                            ForEach(services.indices, id: \.self) { i in
+                                let svc = services[i]
+                                let sid = svc["service_id"] as? String ?? ""
+                                let typ = svc["type"] as? String ?? ""
+                                let state = svc["state"] as? String ?? ""
+                                let createdAt = svc["created_at"] as? String ?? ""
+                                HStack(spacing: 10) {
+                                    Text(sid.isEmpty ? "(missing service_id)" : sid)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .textSelection(.enabled)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                    Spacer()
+                                    Text("\(typ) \(state)")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    if !createdAt.isEmpty {
+                                        Text(createdAt)
+                                            .font(.system(.caption2, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    Button("Use") { serviceID = sid }
+                                        .disabled(sid.isEmpty)
+                                    Button("Connect") { connectWS(serviceID: sid) }
+                                        .disabled(sid.isEmpty)
+                                    Button("Delete") { Task { await deleteService(serviceID: sid) } }
+                                        .disabled(sid.isEmpty)
+                                }
+                            }
+                            if services.isEmpty {
+                                Text("(no services)")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(minHeight: 120)
+                }
+            }
+
+            GroupBox("Create Service") {
+                VStack(alignment: .leading, spacing: 10) {
                     TextField("image_ref", text: $imageRef)
                     TextField("rw_mount (optional)", text: $rwMount)
-                    TextField("system_prompt", text: $systemPrompt)
+
+                    HStack(alignment: .top) {
+                        Text("system_prompt")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Picker("", selection: $systemPromptMode) {
+                            Text("builtin (claude_code)").tag(SystemPromptMode.builtin)
+                            Text("custom").tag(SystemPromptMode.custom)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    if systemPromptMode == .custom {
+                        TextEditor(text: $systemPromptCustom)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(minHeight: 70)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(.quaternary, lineWidth: 1)
+                            }
+                    } else {
+                        TextField("append_system_prompt (optional)", text: $systemPromptAppend)
+                            .font(.system(.caption, design: .monospaced))
+                    }
+
                     HStack {
                         Button("Pick Work Dir") { showWorkDirPicker = true }
                         if let url = selectedWorkDirURL {
@@ -92,6 +391,64 @@ struct ContentView: View {
                             Button("Open Work Dir") { openWorkDir(workDirPath) }
                         }
                     }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("mcp_servers (json/path)")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Sample") { mcpServersText = Self.sampleMcpServersJSON }
+                            Button("Clear") { mcpServersText = "" }
+                        }
+                        TextEditor(text: $mcpServersText)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(minHeight: 90)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(.quaternary, lineWidth: 1)
+                            }
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle("restrict allowed_tools", isOn: $restrictTools)
+                        if restrictTools {
+                            if builtinTools.isEmpty {
+                                Text("builtin_tools not loaded (click Load Builtin Tools)")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ScrollView {
+                                    LazyVStack(alignment: .leading, spacing: 4) {
+                                        ForEach(builtinTools, id: \.self) { name in
+                                            Toggle(isOn: bindingForAllowedTool(name)) {
+                                                Text(name)
+                                                    .font(.system(.caption, design: .monospaced))
+                                            }
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .frame(minHeight: 80)
+                            }
+                            TextField("extra allowed_tools (comma/newline separated)", text: $extraAllowedToolsText)
+                                .font(.system(.caption, design: .monospaced))
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("agents (JSON object; optional)")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $agentsText)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(minHeight: 90)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(.quaternary, lineWidth: 1)
+                            }
+                    }
+
                     if let serviceID {
                         Text("service_id: \(serviceID)")
                             .font(.system(.body, design: .monospaced))
@@ -175,6 +532,13 @@ struct ContentView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(serviceEnvText: $serviceEnvText)
         }
+        .sheet(item: $pendingAsk) { ask in
+            AskSheetView(
+                ask: ask,
+                onSubmit: { answers in sendAskAnswer(askID: ask.id, answers: answers) },
+                onCancel: { pendingAsk = nil }
+            )
+        }
         .fileImporter(isPresented: $showImagePicker, allowedContentTypes: allowedImageTypes(), allowsMultipleSelection: false) { result in
             switch result {
             case .success(let urls):
@@ -198,6 +562,8 @@ struct ContentView: View {
         .task {
             await ensureRunnerRunning()
             await refreshStatus()
+            await refreshServices()
+            await refreshBuiltinTools()
         }
     }
 
@@ -263,12 +629,50 @@ struct ContentView: View {
     }
 
     @MainActor
+    private func refreshServices() async {
+        do {
+            let c = try client()
+            let resp = try await c.listServices()
+            services = resp["services"] as? [[String: Any]] ?? []
+        } catch {
+            statusText = "Error: \(error)"
+        }
+    }
+
+    @MainActor
+    private func refreshBuiltinTools() async {
+        do {
+            let c = try client()
+            let resp = try await c.getBuiltinTools(serviceType: "claude")
+            builtinTools = resp["builtin_tools"] as? [String] ?? []
+        } catch {
+            statusText = "Error: \(error)"
+        }
+    }
+
+    @MainActor
     private func restartVM() async {
         statusText = "Restarting VM (may take a few minutes on first run)..."
         do {
             let c = try client()
             _ = try await c.restartVM()
             await refreshStatus()
+        } catch {
+            statusText = "Error: \(error)"
+        }
+    }
+
+    @MainActor
+    private func deleteService(serviceID: String) async {
+        let sid = serviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if sid.isEmpty { return }
+        do {
+            let c = try client()
+            _ = try await c.deleteService(serviceID: sid)
+            if self.serviceID == sid {
+                self.serviceID = nil
+            }
+            await refreshServices()
         } catch {
             statusText = "Error: \(error)"
         }
@@ -292,10 +696,57 @@ struct ContentView: View {
             workDirPath = workDir
             mounts.append(workDir)
 
-            let resp = try await c.createClaudeService(imageRef: imageRef, rwMounts: mounts, env: env, serviceConfig: [
-                "system_prompt": systemPrompt,
+            var serviceConfig: [String: Any] = [
                 "cwd": workDir,
-            ])
+            ]
+
+            switch systemPromptMode {
+            case .builtin:
+                var preset: [String: Any] = ["type": "preset", "preset": "claude_code"]
+                let append = systemPromptAppend.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !append.isEmpty {
+                    preset["append"] = append
+                }
+                serviceConfig["system_prompt"] = preset
+            case .custom:
+                serviceConfig["system_prompt"] = systemPromptCustom
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            let mcpRaw = mcpServersText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !mcpRaw.isEmpty {
+                if mcpRaw.hasPrefix("{") {
+                    serviceConfig["mcp_servers"] = try parseJSONObjectText(mcpRaw)
+                } else {
+                    serviceConfig["mcp_servers"] = mcpRaw
+                }
+            }
+
+            let agentsRaw = agentsText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !agentsRaw.isEmpty {
+                serviceConfig["agents"] = try parseJSONObjectText(agentsRaw)
+            }
+
+            if restrictTools {
+                var tools = Set<String>()
+                for t in allowedTools {
+                    let s = t.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !s.isEmpty { tools.insert(s) }
+                }
+                for t in parseCommaNewlineList(extraAllowedToolsText) {
+                    tools.insert(t)
+                }
+                if !tools.isEmpty {
+                    serviceConfig["allowed_tools"] = tools.sorted()
+                }
+            }
+
+            let resp = try await c.createClaudeService(
+                imageRef: imageRef,
+                rwMounts: mounts,
+                env: env,
+                serviceConfig: serviceConfig
+            )
             serviceID = resp["service_id"] as? String
             if let serviceID {
                 statusText = "Created: \(serviceID) (connecting WS...)"
@@ -305,6 +756,7 @@ struct ContentView: View {
             chatOutput = ""
             debugThinking = ""
             debugEvents = ""
+            await refreshServices()
             if let serviceID {
                 connectWS(serviceID: serviceID)
             }
@@ -397,6 +849,41 @@ struct ContentView: View {
                             }
                         case "tool.use", "tool.result", "response.usage":
                             debugEvents += s + "\n"
+                        case "agent.ask":
+                            debugEvents += s + "\n"
+                            guard let askID = obj["ask_id"] as? String,
+                                  let input = obj["input"] as? [String: Any],
+                                  let rawQuestions = input["questions"] as? [[String: Any]]
+                            else {
+                                chatOutput += "\n[ASK] invalid payload\n"
+                                break
+                            }
+
+                            var questions: [AskQuestion] = []
+                            for (qi, q) in rawQuestions.enumerated() {
+                                let header = (q["header"] as? String) ?? "Question"
+                                let qtext = (q["question"] as? String) ?? ""
+                                let multi = (q["multiSelect"] as? Bool) ?? false
+                                let rawOptions = q["options"] as? [[String: Any]] ?? []
+
+                                var options: [AskOption] = []
+                                options.reserveCapacity(rawOptions.count)
+                                for (oi, o) in rawOptions.enumerated() {
+                                    let label = (o["label"] as? String) ?? ""
+                                    let desc = (o["description"] as? String) ?? ""
+                                    options.append(AskOption(id: oi, label: label, description: desc))
+                                }
+                                questions.append(
+                                    AskQuestion(
+                                        id: qi,
+                                        header: header,
+                                        question: qtext,
+                                        options: options,
+                                        multiSelect: multi
+                                    )
+                                )
+                            }
+                            pendingAsk = AskRequest(id: askID, questions: questions)
                         case "response.final":
                             if let contents = obj["contents"] as? [[String: Any]] {
                                 let text = contents.compactMap { c -> String? in
@@ -423,6 +910,34 @@ struct ContentView: View {
                 }
                 receiveLoop(wsTask: wsTask, generation: generation)
             }
+        }
+    }
+
+    private func sendAskAnswer(askID: String, answers: [String: String]) {
+        guard let wsTask else {
+            statusText = "WS not connected"
+            pendingAsk = nil
+            return
+        }
+        do {
+            let payload: [String: Any] = [
+                "type": "ask.answer",
+                "ask_id": askID,
+                "answers": answers,
+            ]
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            guard let json = String(data: data, encoding: .utf8) else {
+                throw NousAgentRunnerError.io("failed to encode json")
+            }
+            wsTask.send(.string(json)) { err in
+                if let err {
+                    DispatchQueue.main.async { statusText = "WS send error: \(err)" }
+                }
+            }
+            pendingAsk = nil
+        } catch {
+            statusText = "Ask answer error: \(error)"
+            pendingAsk = nil
         }
     }
 
