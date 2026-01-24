@@ -252,13 +252,14 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
   "image_ref": "docker.io/gravtice/nous-claude-agent-service:0.1.0",
   "resources": {"cpu_cores": 2, "memory_mb": 1024, "pids": 256},
   "rw_mounts": ["/Users/alice/Work/project/output"],
-  "env": {"ANTHROPIC_API_KEY": "..."},
-  "service_config": {
-    "cwd": "/Users/alice/Work/project",
-    "mcp_servers": "/Users/alice/Work/mcp-servers.json",
-    "allowed_tools": ["Read","Glob","Grep","AskUserQuestion"],
-    "setting_sources": ["project"],
-    "agents": {
+	  "env": {"ANTHROPIC_API_KEY": "..."},
+	  "service_config": {
+	    "cwd": "/Users/alice/Work/project",
+	    "permission_mode": "plan",
+	    "mcp_servers": "/Users/alice/Work/mcp-servers.json",
+	    "allowed_tools": ["Read","Glob","Grep","AskUserQuestion"],
+	    "setting_sources": ["project"],
+	    "agents": {
       "reviewer": {"description":"Code reviewer","prompt":"Review the diff.","tools":["Read","Grep"],"model":"sonnet"}
     }
   }
@@ -281,6 +282,7 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 - `service_config`：
   - 透传给容器内服务；对 `type="claude"`，会被解释为 Python Claude Agent SDK 的 `ClaudeAgentOptions`
   - 若 `mcp_servers` 是字符串路径，则必须位于 Share 白名单目录下（否则 `PATH_NOT_ALLOWED`）
+  - `permission_mode` 可在会话中通过 ASP `permission_mode.set` 动态切换
 
 返回：
 

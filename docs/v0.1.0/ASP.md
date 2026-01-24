@@ -71,6 +71,21 @@ ASP 是 Nous Agent Runner 的**数据面**协议：用于与某个 Agent Service
 {"type":"ask.answer","ask_id":"ask_xxx","answers":{"<question>":"<answer>"}}
 ```
 
+### 2.4 `permission_mode.set`
+
+切换权限模式（例如切到 plan）：
+
+```json
+{"type":"permission_mode.set","mode":"plan"}
+```
+
+`mode`（当前实现允许）：
+
+- `default`
+- `acceptEdits`
+- `plan`
+- `bypassPermissions`
+
 ---
 
 ## 3. Runner → Client 消息
@@ -168,6 +183,14 @@ Agent 需要用户补充信息（AskUserQuestion）时推送：
 {"type":"done"}
 ```
 
+### 3.10 `permission_mode.updated`
+
+切换权限模式成功回执：
+
+```json
+{"type":"permission_mode.updated","mode":"plan"}
+```
+
 ---
 
 ## 4. 推荐客户端状态机（避免踩坑）
@@ -177,6 +200,7 @@ Agent 需要用户补充信息（AskUserQuestion）时推送：
   - 持续消费 `response.delta`（可边到边显示）
   - 可选：消费 `response.thinking.delta` / `tool.use` / `tool.result` / `response.usage`（用于 Debug/展示/统计）
   - 若收到 `agent.ask`：展示问题并发送 `ask.answer`，然后继续消费后续事件
+  - 需要切换权限模式（例如 plan）时发送 `permission_mode.set`（建议在上一轮 `done` 之后）
   - 收到 `response.final` 后继续等待 `done`
   - 收到 `error` 后也继续等待 `done`（`claude` service 会在错误后补发 `done`）
 - 同一连接内不要并发发送多条 `input`；若上一轮未结束再次发送，`claude` service 可能返回 `{"type":"error","code":"BUSY",...}`
