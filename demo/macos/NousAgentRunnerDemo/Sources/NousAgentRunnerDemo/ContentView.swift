@@ -167,6 +167,15 @@ struct ContentView: View {
         var id: String { rawValue }
     }
 
+    private enum PermissionMode: String, CaseIterable, Identifiable {
+        case `default`
+        case acceptEdits
+        case plan
+        case bypassPermissions
+
+        var id: String { rawValue }
+    }
+
     private static let sampleMcpServersJSON =
         """
         {
@@ -183,6 +192,7 @@ struct ContentView: View {
     @State private var systemPromptMode: SystemPromptMode = .custom
     @State private var systemPromptCustom = "You are a helpful agent."
     @State private var systemPromptAppend = ""
+    @State private var permissionMode: PermissionMode = .bypassPermissions
     @State private var rwMount = ""
     @State private var selectedWorkDirURL: URL?
     @State private var showWorkDirPicker = false
@@ -368,6 +378,19 @@ struct ContentView: View {
                     }
 
                     HStack {
+                        Text("permission_mode")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Picker("", selection: $permissionMode) {
+                            ForEach(PermissionMode.allCases) { m in
+                                Text(m.rawValue).tag(m)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        Spacer()
+                    }
+
+                    HStack {
                         Button("Pick Work Dir") { showWorkDirPicker = true }
                         if let url = selectedWorkDirURL {
                             Text("selected_work_dir: \(url.path)")
@@ -469,6 +492,21 @@ struct ContentView: View {
                     .overlay {
                         RoundedRectangle(cornerRadius: 6)
                             .stroke(.quaternary, lineWidth: 1)
+                    }
+
+                    HStack {
+                        Text("permission_mode")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Picker("", selection: $permissionMode) {
+                            ForEach(PermissionMode.allCases) { m in
+                                Text(m.rawValue).tag(m)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        Button("Apply") { sendPermissionModeSet(mode: permissionMode) }
+                            .disabled(wsTask == nil)
+                        Spacer()
                     }
 
                     HStack {
@@ -712,6 +750,7 @@ struct ContentView: View {
                 serviceConfig["system_prompt"] = systemPromptCustom
                     .trimmingCharacters(in: .whitespacesAndNewlines)
             }
+            serviceConfig["permission_mode"] = permissionMode.rawValue
 
             let mcpRaw = mcpServersText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !mcpRaw.isEmpty {
@@ -847,8 +886,13 @@ struct ContentView: View {
                             if let t = obj["text"] as? String {
                                 debugThinking += t
                             }
-                        case "tool.use", "tool.result", "response.usage":
+                        case "tool.use", "tool.result", "response.usage", "permission_mode.updated":
                             debugEvents += s + "\n"
+                            if type == "permission_mode.updated",
+                               let mode = obj["mode"] as? String,
+                               let v = PermissionMode(rawValue: mode) {
+                                permissionMode = v
+                            }
                         case "agent.ask":
                             debugEvents += s + "\n"
                             guard let askID = obj["ask_id"] as? String,
@@ -938,6 +982,30 @@ struct ContentView: View {
         } catch {
             statusText = "Ask answer error: \(error)"
             pendingAsk = nil
+        }
+    }
+
+    private func sendPermissionModeSet(mode: PermissionMode) {
+        guard let wsTask else {
+            statusText = "WS not connected"
+            return
+        }
+        do {
+            let payload: [String: Any] = [
+                "type": "permission_mode.set",
+                "mode": mode.rawValue,
+            ]
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            guard let json = String(data: data, encoding: .utf8) else {
+                throw NousAgentRunnerError.io("failed to encode json")
+            }
+            wsTask.send(.string(json)) { err in
+                if let err {
+                    DispatchQueue.main.async { statusText = "WS send error: \(err)" }
+                }
+            }
+        } catch {
+            statusText = "Permission mode error: \(error)"
         }
     }
 
