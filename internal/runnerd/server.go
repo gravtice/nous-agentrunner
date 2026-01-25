@@ -1,6 +1,7 @@
 package runnerd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,18 +12,25 @@ import (
 )
 
 type Server struct {
+	ctx context.Context
 	cfg Config
 
 	mu                sync.Mutex
 	shares            []shareEntry
 	services          map[string]Service
+	tunnels           map[string]*tunnelEntry
+	tunnelByHostPort  map[int]string
 	vmRestartRequired bool
 }
 
-func NewServer(cfg Config) (*Server, error) {
+func NewServer(ctx context.Context, cfg Config) (*Server, error) {
 	s := &Server{
+		ctx:      ctx,
 		cfg:      cfg,
 		services: make(map[string]Service),
+		tunnels:  make(map[string]*tunnelEntry),
+		// host_port -> tunnel_id (for idempotent creation)
+		tunnelByHostPort: make(map[int]string),
 	}
 	if err := s.loadState(); err != nil {
 		return nil, err
@@ -42,6 +50,7 @@ type Share struct {
 
 type Service struct {
 	ServiceID string `json:"service_id"`
+	SessionID string `json:"session_id,omitempty"`
 	Type      string `json:"type"`
 	ImageRef  string `json:"image_ref"`
 	State     string `json:"state"`

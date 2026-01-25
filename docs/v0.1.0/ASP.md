@@ -11,7 +11,10 @@ ASP 是 Nous Agent Runner 的**数据面**协议：用于与某个 Agent Service
 - URL：`ws://127.0.0.1:<port>/v1/services/{service_id}/chat`
 - 鉴权：`Authorization: Bearer <token>`
 - 编码：WebSocket 文本帧，内容为 JSON object
-- 连接语义：**一条 WS 连接 = 一个 session**（可在同一连接内多轮 `input`，但不支持并发多请求）
+- 连接语义：
+  - `session_id` 表示一个 Agent session（用于“继续对话”）
+  - 当前实现：**一个 `service_id` 绑定一个 `session_id`**，WS 断线后重新连接会复用同一个 `session_id`
+  - 可在同一连接内多轮 `input`，但不支持并发多请求
 
 连接建立后，Runner 会先发送：
 

@@ -89,4 +89,3 @@ func TestServices_VMNotRunning_ReportsStopped(t *testing.T) {
 		}
 	})
 }
-

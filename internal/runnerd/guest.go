@@ -135,6 +135,30 @@ func (s *Server) startSSHTunnel(ctx context.Context, localPort, guestPort int) (
 	return cmd, nil
 }
 
+func (s *Server) startSSHReverseTunnel(ctx context.Context, guestPort, hostPort int) (*exec.Cmd, error) {
+	sshConfig := s.limaSSHConfigPath()
+	destHost := "lima-" + s.cfg.LimaInstanceName
+
+	args := []string{
+		"-F", sshConfig,
+		"-o", "ExitOnForwardFailure=yes",
+		"-N",
+		"-R", fmt.Sprintf("127.0.0.1:%d:127.0.0.1:%d", guestPort, hostPort),
+		destHost,
+	}
+	cmd := exec.CommandContext(ctx, "ssh", args...)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	// Give ssh a moment to establish the tunnel.
+	time.Sleep(300 * time.Millisecond)
+	return cmd, nil
+}
+
 func (s *Server) ensureGuestRunnerdInstalled(ctx context.Context) error {
 	hostBin := strings.TrimSpace(s.cfg.GuestBinaryPath)
 	if hostBin == "" {

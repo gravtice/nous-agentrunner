@@ -25,8 +25,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/services", s.withAuth(s.handleServicesList))
 	mux.HandleFunc("GET /v1/services/{service_id}", s.withAuth(s.handleServicesGet))
 	mux.HandleFunc("DELETE /v1/services/{service_id}", s.withAuth(s.handleServicesDelete))
+	mux.HandleFunc("POST /v1/services/{service_id}/start", s.withAuth(s.handleServicesStart))
+	mux.HandleFunc("POST /v1/services/{service_id}/stop", s.withAuth(s.handleServicesStop))
 	mux.HandleFunc("POST /v1/services/{service_id}/snapshot", s.withAuth(s.handleServicesSnapshot))
 	mux.HandleFunc("GET /v1/services/types/{service_type}/builtin_tools", s.withAuth(s.handleServiceTypeBuiltinTools))
+
+	mux.HandleFunc("POST /v1/tunnels", s.withAuth(s.handleTunnelsCreate))
+	mux.HandleFunc("DELETE /v1/tunnels/{tunnel_id}", s.withAuth(s.handleTunnelsDelete))
 
 	// ASP (v1: WebSocket)
 	mux.HandleFunc("GET /v1/services/{service_id}/chat", s.withAuth(s.handleServiceChatWS))

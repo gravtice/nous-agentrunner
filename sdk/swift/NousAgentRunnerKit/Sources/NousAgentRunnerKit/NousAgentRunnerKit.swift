@@ -162,6 +162,26 @@ public final class NousAgentRunnerClient {
         try await requestJSON(method: "DELETE", path: "/v1/services/\(serviceID)", body: nil, timeoutSeconds: 300)
     }
 
+    public func stopService(serviceID: String) async throws -> [String: Any] {
+        try await requestJSON(method: "POST", path: "/v1/services/\(serviceID)/stop", body: nil, timeoutSeconds: 300)
+    }
+
+    public func startService(serviceID: String) async throws -> [String: Any] {
+        try await requestJSON(method: "POST", path: "/v1/services/\(serviceID)/start", body: nil, timeoutSeconds: 300)
+    }
+
+    public func createTunnel(hostPort: Int, guestPort: Int? = nil) async throws -> [String: Any] {
+        var body: [String: Any] = ["host_port": hostPort]
+        if let guestPort {
+            body["guest_port"] = guestPort
+        }
+        return try await requestJSON(method: "POST", path: "/v1/tunnels", body: body, timeoutSeconds: 60)
+    }
+
+    public func deleteTunnel(tunnelID: String) async throws -> [String: Any] {
+        try await requestJSON(method: "DELETE", path: "/v1/tunnels/\(tunnelID)", body: nil, timeoutSeconds: 60)
+    }
+
     public func openChatWebSocket(serviceID: String) throws -> URLSessionWebSocketTask {
         guard var components = URLComponents(url: runtime.baseURL, resolvingAgainstBaseURL: false) else {
             throw NousAgentRunnerError.invalidConfig("invalid base url")

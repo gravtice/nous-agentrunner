@@ -22,10 +22,14 @@ func (s *Server) handleServiceChatWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
-	_, ok := s.services[serviceID]
+	svc, ok := s.services[serviceID]
 	s.mu.Unlock()
 	if !ok {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "service not found", nil)
+		return
+	}
+	if strings.TrimSpace(strings.ToLower(svc.State)) == "stopped" {
+		writeError(w, http.StatusConflict, "SERVICE_STOPPED", "service is stopped", nil)
 		return
 	}
 
@@ -37,10 +41,18 @@ func (s *Server) handleServiceChatWS(w http.ResponseWriter, r *http.Request) {
 	}
 	defer clientConn.Close()
 
-	sessionID, err := newID("sess_", 12)
-	if err != nil {
-		_ = clientConn.WriteJSON(map[string]any{"type": "error", "code": "INTERNAL_ERROR", "message": "failed to allocate session"})
-		return
+	sessionID := strings.TrimSpace(svc.SessionID)
+	if sessionID == "" {
+		sessionID, err = newID("sess_", 12)
+		if err != nil {
+			_ = clientConn.WriteJSON(map[string]any{"type": "error", "code": "INTERNAL_ERROR", "message": "failed to allocate session"})
+			return
+		}
+		svc.SessionID = sessionID
+		s.mu.Lock()
+		s.services[serviceID] = svc
+		_ = s.saveServicesLocked()
+		s.mu.Unlock()
 	}
 	_ = clientConn.WriteJSON(map[string]any{"type": "session.started", "session_id": sessionID, "service_id": serviceID})
 

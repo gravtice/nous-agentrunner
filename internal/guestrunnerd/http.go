@@ -20,9 +20,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /internal/services", s.handleServicesList)
 	mux.HandleFunc("GET /internal/services/{service_id}", s.handleServiceGet)
 	mux.HandleFunc("DELETE /internal/services/{service_id}", s.handleServiceDelete)
+	mux.HandleFunc("POST /internal/services/{service_id}/start", s.handleServiceStart)
+	mux.HandleFunc("POST /internal/services/{service_id}/stop", s.handleServiceStop)
 	mux.HandleFunc("POST /internal/services/{service_id}/snapshot", s.handleServiceSnapshot)
 
 	mux.HandleFunc("GET /internal/services/{service_id}/chat", s.handleServiceChatWS)
+
+	mux.HandleFunc("GET /internal/ports/free", s.handleFreePort)
 
 	return mux
 }

@@ -16,7 +16,7 @@ func Run(ctx context.Context) error {
 
 	setupLogging(cfg)
 
-	s, err := NewServer(cfg)
+	s, err := NewServer(ctx, cfg)
 	if err != nil {
 		return err
 	}
