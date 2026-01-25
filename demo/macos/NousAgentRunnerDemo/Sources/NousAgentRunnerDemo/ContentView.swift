@@ -936,6 +936,11 @@ struct ContentView: View {
                                 if !name.isEmpty {
                                     lastToolSummary = name + suffix
                                 }
+                                if name == "EnterPlanMode" {
+                                    permissionMode = .plan
+                                } else if name == "ExitPlanMode" {
+                                    permissionMode = .bypassPermissions
+                                }
                             }
                             if type == "response.usage" {
                                 var parts: [String] = []
