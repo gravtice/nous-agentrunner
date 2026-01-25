@@ -265,6 +265,19 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
     try:
         pending_asks: dict[str, asyncio.Future[dict[str, Any]]] = {}
         current_permission_mode = options.permission_mode or "bypassPermissions"
+        allowed_tools = {t for t in (options.allowed_tools or []) if isinstance(t, str) and t.strip()}
+        disallowed_tools = {t for t in (options.disallowed_tools or []) if isinstance(t, str) and t.strip()}
+        enforced_tools = {
+            "AskUserQuestion",
+            "Bash",
+            "Edit",
+            "Glob",
+            "Grep",
+            "MultiEdit",
+            "Read",
+            "WebFetch",
+            "Write",
+        }
 
         def cancel_pending_asks() -> None:
             for fut in pending_asks.values():
@@ -305,6 +318,14 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                         )
                     ]
                 )
+
+            if tool_name in disallowed_tools:
+                return PermissionResultDeny(message=f"tool disallowed: {tool_name}")
+            if allowed_tools:
+                if tool_name.startswith("mcp__") or tool_name in enforced_tools:
+                    if tool_name not in allowed_tools:
+                        return PermissionResultDeny(message=f"tool not allowed: {tool_name}")
+
             if tool_name != "AskUserQuestion":
                 return PermissionResultAllow()
 
