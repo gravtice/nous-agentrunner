@@ -381,6 +381,77 @@ func (s *Server) handleServiceDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"deleted": true})
 }
 
+func (s *Server) handleServiceStop(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("service_id"))
+	if id == "" {
+		writeError(w, 400, "BAD_REQUEST", "service_id required", nil)
+		return
+	}
+	s.mu.Lock()
+	svc, ok := s.state.Services[id]
+	s.mu.Unlock()
+	if !ok {
+		writeError(w, 404, "NOT_FOUND", "service not found", nil)
+		return
+	}
+	if svc.State == "stopped" {
+		writeJSON(w, 200, map[string]any{"service_id": id, "state": "stopped"})
+		return
+	}
+
+	_, err := runNerdctl(r.Context(), "stop", svc.ContainerName)
+	if err != nil {
+		writeError(w, 500, "NERDCTL_ERROR", err.Error(), nil)
+		return
+	}
+
+	s.mu.Lock()
+	svc.State = "stopped"
+	s.state.Services[id] = svc
+	_ = s.saveStateLocked()
+	s.mu.Unlock()
+
+	writeJSON(w, 200, map[string]any{"service_id": id, "state": "stopped"})
+}
+
+func (s *Server) handleServiceStart(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("service_id"))
+	if id == "" {
+		writeError(w, 400, "BAD_REQUEST", "service_id required", nil)
+		return
+	}
+	s.mu.Lock()
+	svc, ok := s.state.Services[id]
+	s.mu.Unlock()
+	if !ok {
+		writeError(w, 404, "NOT_FOUND", "service not found", nil)
+		return
+	}
+	if svc.State == "running" {
+		writeJSON(w, 200, map[string]any{"service_id": id, "state": "running"})
+		return
+	}
+
+	_, err := runNerdctl(r.Context(), "start", svc.ContainerName)
+	if err != nil {
+		writeError(w, 500, "NERDCTL_ERROR", err.Error(), nil)
+		return
+	}
+	if err := waitHTTPHealth(r.Context(), svc.Port, 30*time.Second); err != nil {
+		_, _ = runNerdctl(r.Context(), "stop", svc.ContainerName)
+		writeError(w, 500, "SERVICE_UNHEALTHY", err.Error(), nil)
+		return
+	}
+
+	s.mu.Lock()
+	svc.State = "running"
+	s.state.Services[id] = svc
+	_ = s.saveStateLocked()
+	s.mu.Unlock()
+
+	writeJSON(w, 200, map[string]any{"service_id": id, "state": "running"})
+}
+
 type snapshotReq struct {
 	NewTag string `json:"new_tag"`
 }

@@ -318,6 +318,31 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 {"deleted": true}
 ```
 
+#### `POST /v1/services/{service_id}/stop`
+
+语义：
+
+- 停止一个已创建的 Agent Service（容器 stop，但不删除）
+- 用于“会话可恢复但不占用运行资源”的场景
+
+返回：
+
+```json
+{"service_id":"svc_...","state":"stopped"}
+```
+
+#### `POST /v1/services/{service_id}/start`
+
+语义：
+
+- 启动/恢复一个已停止的 Agent Service（容器 start）
+
+返回：
+
+```json
+{"service_id":"svc_...","state":"running"}
+```
+
 #### `POST /v1/services/{service_id}/snapshot`
 
 请求：
@@ -338,11 +363,46 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 
 ---
 
+### 4.5 Tunnels（Host → Guest 端口映射）
+
+用于把 **Host 上的本地服务**（例如 App 内置的 MCP Server，仅监听 `127.0.0.1`）映射到 Guest/容器可访问的 `127.0.0.1:<port>`。
+
+#### `POST /v1/tunnels`
+
+请求：
+
+```json
+{"host_port":7001}
+```
+
+返回：
+
+```json
+{"tunnel_id":"tun_...","host_port":7001,"guest_port":18080,"state":"running","created_at":"2026-01-23T00:00:00Z"}
+```
+
+说明：
+
+- `guest_port` 可直接写入 `service_config.mcp_servers.*.url`（容器侧以 `--network=host` 运行时，访问 `127.0.0.1:<guest_port>` 即可命中转发）。
+
+#### `DELETE /v1/tunnels/{tunnel_id}`
+
+返回：
+
+```json
+{"deleted": true}
+```
+
+---
+
 ## 5. 推荐集成流程（最小闭环）
 
 1. 发现 `<port>` 与 `<token>`（见第 2 节），调用 `GET /v1/system/status` 确认 Runner 可用
 2. `POST /v1/shares` 加入你的工程目录；如返回 `vm_restart_required=true` 或 `system.status.vm.restart_required=true`，调用 `POST /v1/system/vm/restart`
 3. `POST /v1/images/pull` 拉取官方镜像（或用 `images/import` 导入 `local/*`）
-4. `POST /v1/services` 创建 service，拿到 `service_id/asp_url`
-5. 用 ASP 打开 `asp_url` WebSocket 对话（见 `docs/v0.1.0/ASP.md`）
-6. 用完后 `DELETE /v1/services/{service_id}`
+4. （可选）若需要把 Host 本地服务暴露给容器：`POST /v1/tunnels`
+5. `POST /v1/services` 创建 service，拿到 `service_id/asp_url`
+6. 用 ASP 打开 `asp_url` WebSocket 对话（见 `docs/v0.1.0/ASP.md`）
+7. 结束后根据需求：
+   - 暂停保留：`POST /v1/services/{service_id}/stop`
+   - 删除释放：`DELETE /v1/services/{service_id}`

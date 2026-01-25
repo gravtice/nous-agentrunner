@@ -112,6 +112,11 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to allocate service_id", nil)
 		return
 	}
+	sessionID, err := newID("sess_", 12)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to allocate session_id", nil)
+		return
+	}
 
 	log.Printf("services.create: start service_id=%s type=%s image_ref=%s rw_mounts=%d env=%d", serviceID, req.Type, req.ImageRef, len(rwMounts), len(env))
 
@@ -166,6 +171,7 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.services[serviceID] = Service{
 		ServiceID: serviceID,
+		SessionID: sessionID,
 		Type:      req.Type,
 		ImageRef:  req.ImageRef,
 		State:     guestResp.State,
@@ -253,6 +259,90 @@ func (s *Server) handleServicesDelete(w http.ResponseWriter, r *http.Request) {
 	_ = s.saveServicesLocked()
 	s.mu.Unlock()
 	writeJSON(w, 200, map[string]any{"deleted": true})
+}
+
+func (s *Server) handleServicesStop(w http.ResponseWriter, r *http.Request) {
+	serviceID := strings.TrimSpace(r.PathValue("service_id"))
+	if serviceID == "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "service_id is required", nil)
+		return
+	}
+	s.mu.Lock()
+	svc, ok := s.services[serviceID]
+	s.mu.Unlock()
+	if !ok {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "service not found", nil)
+		return
+	}
+
+	gc, err := s.ensureGuestReady(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GUEST_UNAVAILABLE", err.Error(), nil)
+		return
+	}
+
+	var guestResp struct {
+		ServiceID string `json:"service_id"`
+		State     string `json:"state"`
+	}
+	if err := gc.postJSON(r.Context(), "/internal/services/"+serviceID+"/stop", map[string]any{}, &guestResp); err != nil {
+		var ge *guestHTTPError
+		if !errors.As(err, &ge) || ge.Status != http.StatusNotFound {
+			writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
+			return
+		}
+		// If the guest forgot the service, stopping is effectively a no-op.
+		guestResp = struct {
+			ServiceID string `json:"service_id"`
+			State     string `json:"state"`
+		}{ServiceID: serviceID, State: "stopped"}
+	}
+
+	svc.State = guestResp.State
+	s.mu.Lock()
+	s.services[serviceID] = svc
+	_ = s.saveServicesLocked()
+	s.mu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{"service_id": serviceID, "state": guestResp.State})
+}
+
+func (s *Server) handleServicesStart(w http.ResponseWriter, r *http.Request) {
+	serviceID := strings.TrimSpace(r.PathValue("service_id"))
+	if serviceID == "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "service_id is required", nil)
+		return
+	}
+	s.mu.Lock()
+	svc, ok := s.services[serviceID]
+	s.mu.Unlock()
+	if !ok {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "service not found", nil)
+		return
+	}
+
+	gc, err := s.ensureGuestReady(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GUEST_UNAVAILABLE", err.Error(), nil)
+		return
+	}
+
+	var guestResp struct {
+		ServiceID string `json:"service_id"`
+		State     string `json:"state"`
+	}
+	if err := gc.postJSON(r.Context(), "/internal/services/"+serviceID+"/start", map[string]any{}, &guestResp); err != nil {
+		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
+		return
+	}
+
+	svc.State = guestResp.State
+	s.mu.Lock()
+	s.services[serviceID] = svc
+	_ = s.saveServicesLocked()
+	s.mu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{"service_id": serviceID, "state": guestResp.State})
 }
 
 type snapshotRequest struct {
