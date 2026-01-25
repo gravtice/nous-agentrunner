@@ -251,6 +251,9 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
         await ws.send_json({"type": "error", "code": "BAD_CONFIG", "message": str(e)})
         await ws.close()
         return ws
+    allowlist_configured = "allowed_tools" in service_cfg
+    disallowlist_configured = "disallowed_tools" in service_cfg
+    tool_restrictions_configured = allowlist_configured or disallowlist_configured
 
     try:
         options = _normalize_options(service_cfg, share_dirs)
@@ -264,7 +267,8 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
 
     try:
         pending_asks: dict[str, asyncio.Future[dict[str, Any]]] = {}
-        current_permission_mode = options.permission_mode or "bypassPermissions"
+        requested_permission_mode = options.permission_mode or "bypassPermissions"
+        current_permission_mode = requested_permission_mode
         allowed_tools = {t for t in (options.allowed_tools or []) if isinstance(t, str) and t.strip()}
         disallowed_tools = {t for t in (options.disallowed_tools or []) if isinstance(t, str) and t.strip()}
         enforced_tools = {
@@ -278,6 +282,9 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
             "WebFetch",
             "Write",
         }
+        bypass_cli_mode = "default" if tool_restrictions_configured else "bypassPermissions"
+        if requested_permission_mode == "bypassPermissions" and tool_restrictions_configured:
+            options.permission_mode = "default"
 
         def cancel_pending_asks() -> None:
             for fut in pending_asks.values():
@@ -313,7 +320,7 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                     updated_permissions=[
                         PermissionUpdate(
                             type="setMode",
-                            mode="bypassPermissions",
+                            mode=bypass_cli_mode,
                             destination="session",
                         )
                     ]
@@ -321,7 +328,7 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
 
             if tool_name in disallowed_tools:
                 return PermissionResultDeny(message=f"tool disallowed: {tool_name}")
-            if allowed_tools:
+            if allowlist_configured:
                 if tool_name.startswith("mcp__") or tool_name in enforced_tools:
                     if tool_name not in allowed_tools:
                         return PermissionResultDeny(message=f"tool not allowed: {tool_name}")
@@ -574,7 +581,7 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                         )
                         continue
                     try:
-                        await client.set_permission_mode(mode)
+                        await client.set_permission_mode(bypass_cli_mode if mode == "bypassPermissions" else mode)
                         await set_local_permission_mode(mode)
                     except Exception as e:
                         await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": str(e)})
