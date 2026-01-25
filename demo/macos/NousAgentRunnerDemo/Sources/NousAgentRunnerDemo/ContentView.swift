@@ -810,9 +810,7 @@ struct ContentView: View {
                 for t in parseCommaNewlineList(extraAllowedToolsText) {
                     tools.insert(t)
                 }
-                if !tools.isEmpty {
-                    serviceConfig["allowed_tools"] = tools.sorted()
-                }
+                serviceConfig["allowed_tools"] = tools.sorted()
             }
 
             let resp = try await c.createClaudeService(
