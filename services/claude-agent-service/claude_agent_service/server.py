@@ -15,6 +15,7 @@ from claude_agent_sdk._errors import CLINotFoundError
 from claude_agent_sdk.types import (
     AgentDefinition,
     AssistantMessage,
+    PermissionUpdate,
     PermissionResultAllow,
     PermissionResultDeny,
     ResultMessage,
@@ -26,6 +27,17 @@ from claude_agent_sdk.types import (
     ToolUseBlock,
     UserMessage,
 )
+
+
+def _claude_config_dir() -> Path:
+    raw = os.getenv("CLAUDE_CONFIG_DIR")
+    if raw:
+        return Path(raw)
+    return Path.home() / ".claude"
+
+
+def _claude_plans_dir() -> Path:
+    return _claude_config_dir() / "plans"
 
 
 def _env_int(name: str, default: int) -> int:
@@ -263,6 +275,8 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
 
     try:
         pending_asks: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        current_permission_mode = options.permission_mode or "bypassPermissions"
+        claude_plans_dir = _claude_plans_dir()
 
         def cancel_pending_asks() -> None:
             for fut in pending_asks.values():
@@ -270,10 +284,61 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                     fut.cancel()
             pending_asks.clear()
 
+        async def set_local_permission_mode(mode: str) -> None:
+            nonlocal current_permission_mode
+            if current_permission_mode == mode:
+                return
+            current_permission_mode = mode
+            with contextlib.suppress(Exception):
+                await ws.send_json({"type": "permission_mode.updated", "mode": mode})
+
+        def is_in_claude_plans_dir(file_path: str) -> bool:
+            try:
+                p = Path(file_path).expanduser()
+                if not p.is_absolute() and options.cwd:
+                    p = Path(options.cwd) / p
+                p = p.resolve()
+                base = claude_plans_dir.resolve()
+                p.relative_to(base)
+                return True
+            except Exception:
+                return False
+
+        def tool_file_paths(input_data: dict[str, Any]) -> list[str]:
+            for k in ("file_path", "filePath", "path"):
+                v = input_data.get(k)
+                if isinstance(v, str) and v.strip():
+                    return [v.strip()]
+            return []
+
         async def can_use_tool(
             tool_name: str, input_data: dict[str, Any], _: ToolPermissionContext
         ) -> PermissionResultAllow | PermissionResultDeny:
             if tool_name != "AskUserQuestion":
+                if current_permission_mode == "plan":
+                    if tool_name == "Bash":
+                        return PermissionResultDeny(message="plan mode: Bash is disabled")
+                    if tool_name in {"Write", "Edit", "MultiEdit"}:
+                        paths = tool_file_paths(input_data)
+                        if not paths:
+                            return PermissionResultDeny(
+                                message=f"plan mode: {tool_name} missing file_path"
+                            )
+                        if not all(is_in_claude_plans_dir(p) for p in paths):
+                            return PermissionResultDeny(
+                                message="plan mode: file edits are restricted to plan files",
+                            )
+                    if tool_name == "ExitPlanMode":
+                        await set_local_permission_mode("bypassPermissions")
+                        return PermissionResultAllow(
+                            updated_permissions=[
+                                PermissionUpdate(
+                                    type="setMode",
+                                    mode="bypassPermissions",
+                                    destination="session",
+                                )
+                            ]
+                        )
                 return PermissionResultAllow()
 
             ask_id = "ask_" + os.urandom(8).hex()
@@ -311,6 +376,7 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                     thinking_sent: str = ""
                     seen_tool_uses: set[str] = set()
                     seen_tool_results: set[str] = set()
+                    tool_use_name_by_id: dict[str, str] = {}
 
                     stream_tool_uses: dict[int, dict[str, Any]] = {}
                     result: ResultMessage | None = None
@@ -361,6 +427,9 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                                         and tool_name
                                         and tool_id not in seen_tool_uses
                                     ):
+                                        tool_use_name_by_id[tool_id] = tool_name
+                                        if tool_name == "EnterPlanMode":
+                                            await set_local_permission_mode("plan")
                                         payload: dict[str, Any] = {
                                             "type": "tool.use",
                                             "id": tool_id,
@@ -403,6 +472,9 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                                             )
                                 elif isinstance(block, ToolUseBlock):
                                     if block.id not in seen_tool_uses:
+                                        tool_use_name_by_id[block.id] = block.name
+                                        if block.name == "EnterPlanMode":
+                                            await set_local_permission_mode("plan")
                                         await ws.send_json(
                                             {
                                                 "type": "tool.use",
@@ -414,6 +486,9 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                                         seen_tool_uses.add(block.id)
                                 elif isinstance(block, ToolResultBlock):
                                     if block.tool_use_id not in seen_tool_results:
+                                        tool_name = tool_use_name_by_id.get(block.tool_use_id)
+                                        if tool_name == "ExitPlanMode" and not block.is_error:
+                                            await set_local_permission_mode("bypassPermissions")
                                         await ws.send_json(
                                             {
                                                 "type": "tool.result",
@@ -427,6 +502,9 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                             for block in m.content:
                                 if isinstance(block, ToolResultBlock):
                                     if block.tool_use_id not in seen_tool_results:
+                                        tool_name = tool_use_name_by_id.get(block.tool_use_id)
+                                        if tool_name == "ExitPlanMode" and not block.is_error:
+                                            await set_local_permission_mode("bypassPermissions")
                                         await ws.send_json(
                                             {
                                                 "type": "tool.result",
@@ -505,7 +583,7 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                         continue
                     try:
                         await client.set_permission_mode(mode)
-                        await ws.send_json({"type": "permission_mode.updated", "mode": mode})
+                        await set_local_permission_mode(mode)
                     except Exception as e:
                         await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": str(e)})
                     continue
