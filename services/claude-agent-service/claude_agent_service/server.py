@@ -430,6 +430,8 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                                         tool_use_name_by_id[tool_id] = tool_name
                                         if tool_name == "EnterPlanMode":
                                             await set_local_permission_mode("plan")
+                                        elif tool_name == "ExitPlanMode":
+                                            await set_local_permission_mode("bypassPermissions")
                                         payload: dict[str, Any] = {
                                             "type": "tool.use",
                                             "id": tool_id,
@@ -475,6 +477,8 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                                         tool_use_name_by_id[block.id] = block.name
                                         if block.name == "EnterPlanMode":
                                             await set_local_permission_mode("plan")
+                                        elif block.name == "ExitPlanMode":
+                                            await set_local_permission_mode("bypassPermissions")
                                         await ws.send_json(
                                             {
                                                 "type": "tool.use",
