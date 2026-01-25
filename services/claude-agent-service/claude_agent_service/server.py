@@ -29,17 +29,6 @@ from claude_agent_sdk.types import (
 )
 
 
-def _claude_config_dir() -> Path:
-    raw = os.getenv("CLAUDE_CONFIG_DIR")
-    if raw:
-        return Path(raw)
-    return Path.home() / ".claude"
-
-
-def _claude_plans_dir() -> Path:
-    return _claude_config_dir() / "plans"
-
-
 def _env_int(name: str, default: int) -> int:
     v = os.getenv(name)
     if not v:
@@ -276,7 +265,6 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
     try:
         pending_asks: dict[str, asyncio.Future[dict[str, Any]]] = {}
         current_permission_mode = options.permission_mode or "bypassPermissions"
-        claude_plans_dir = _claude_plans_dir()
 
         def cancel_pending_asks() -> None:
             for fut in pending_asks.values():
@@ -292,53 +280,32 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
             with contextlib.suppress(Exception):
                 await ws.send_json({"type": "permission_mode.updated", "mode": mode})
 
-        def is_in_claude_plans_dir(file_path: str) -> bool:
-            try:
-                p = Path(file_path).expanduser()
-                if not p.is_absolute() and options.cwd:
-                    p = Path(options.cwd) / p
-                p = p.resolve()
-                base = claude_plans_dir.resolve()
-                p.relative_to(base)
-                return True
-            except Exception:
-                return False
-
-        def tool_file_paths(input_data: dict[str, Any]) -> list[str]:
-            for k in ("file_path", "filePath", "path"):
-                v = input_data.get(k)
-                if isinstance(v, str) and v.strip():
-                    return [v.strip()]
-            return []
-
         async def can_use_tool(
             tool_name: str, input_data: dict[str, Any], _: ToolPermissionContext
         ) -> PermissionResultAllow | PermissionResultDeny:
-            if tool_name != "AskUserQuestion":
-                if current_permission_mode == "plan":
-                    if tool_name == "Bash":
-                        return PermissionResultDeny(message="plan mode: Bash is disabled")
-                    if tool_name in {"Write", "Edit", "MultiEdit"}:
-                        paths = tool_file_paths(input_data)
-                        if not paths:
-                            return PermissionResultDeny(
-                                message=f"plan mode: {tool_name} missing file_path"
-                            )
-                        if not all(is_in_claude_plans_dir(p) for p in paths):
-                            return PermissionResultDeny(
-                                message="plan mode: file edits are restricted to plan files",
-                            )
-                    if tool_name == "ExitPlanMode":
-                        await set_local_permission_mode("bypassPermissions")
-                        return PermissionResultAllow(
-                            updated_permissions=[
-                                PermissionUpdate(
-                                    type="setMode",
-                                    mode="bypassPermissions",
-                                    destination="session",
-                                )
-                            ]
+            if tool_name == "EnterPlanMode":
+                await set_local_permission_mode("plan")
+                return PermissionResultAllow(
+                    updated_permissions=[
+                        PermissionUpdate(
+                            type="setMode",
+                            mode="plan",
+                            destination="session",
                         )
+                    ]
+                )
+            if tool_name == "ExitPlanMode":
+                await set_local_permission_mode("bypassPermissions")
+                return PermissionResultAllow(
+                    updated_permissions=[
+                        PermissionUpdate(
+                            type="setMode",
+                            mode="bypassPermissions",
+                            destination="session",
+                        )
+                    ]
+                )
+            if tool_name != "AskUserQuestion":
                 return PermissionResultAllow()
 
             ask_id = "ask_" + os.urandom(8).hex()
