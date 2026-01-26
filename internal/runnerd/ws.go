@@ -38,15 +38,26 @@ func (s *Server) handleServiceChatWS(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "SERVICE_BUSY", "service already has an active chat connection", nil)
 		return
 	}
-	defer release()
 
 	log.Printf("ws: client connected service_id=%s", serviceID)
 
 	clientConn, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
+		release()
 		return
 	}
 	defer clientConn.Close()
+	defer func() {
+		s.mu.Lock()
+		svc, ok := s.services[serviceID]
+		if ok {
+			svc.LastActivityAt = nowISO8601()
+			s.services[serviceID] = svc
+			_ = s.saveServicesLocked()
+		}
+		s.mu.Unlock()
+		release()
+	}()
 	clientConn.SetReadLimit(s.maxClientASPMessageBytes())
 
 	sessionID := strings.TrimSpace(svc.SessionID)
@@ -62,7 +73,14 @@ func (s *Server) handleServiceChatWS(w http.ResponseWriter, r *http.Request) {
 		_ = s.saveServicesLocked()
 		s.mu.Unlock()
 	}
-	_ = clientConn.WriteJSON(map[string]any{"type": "session.started", "session_id": sessionID, "service_id": serviceID})
+	_ = clientConn.WriteJSON(map[string]any{
+		"type":         "session.started",
+		"session_id":   sessionID,
+		"service_id":   serviceID,
+		"asp_version":  protocolVersionASP,
+		"capabilities": s.protocolCapabilityFlags(),
+		"limits":       s.protocolLimits(),
+	})
 
 	gc, err := s.ensureGuestReady(r.Context())
 	if err != nil {
