@@ -158,7 +158,7 @@ private struct AskSheetView: View {
 
 struct ContentView: View {
     @State private var statusText = "Not loaded"
-    @State private var imageRef = "docker.io/gravtice/nous-claude-agent-service:0.1.3"
+    @State private var imageRef = "docker.io/gravtice/nous-claude-agent-service:0.1.6"
 
     private enum SystemPromptMode: String, CaseIterable, Identifiable {
         case builtin
@@ -193,6 +193,7 @@ struct ContentView: View {
     @State private var systemPromptCustom = "You are a helpful agent."
     @State private var systemPromptAppend = ""
     @State private var permissionMode: PermissionMode = .bypassPermissions
+    @State private var model = ""
     @State private var rwMount = ""
     @State private var selectedWorkDirURL: URL?
     @State private var showWorkDirPicker = false
@@ -293,6 +294,8 @@ struct ContentView: View {
                 Button("Open VM Logs") { openVMLogs() }
                 if let serviceID {
                     Button("Connect WS") { connectWS(serviceID: serviceID) }
+                    Button("Stop Service") { Task { await stopService(serviceID: serviceID) } }
+                    Button("Resume Service") { Task { await resumeService(serviceID: serviceID) } }
                     Button("Delete Service") { Task { await deleteService(serviceID: serviceID) } }
                 }
             }
@@ -394,6 +397,9 @@ struct ContentView: View {
                                     .pickerStyle(.menu)
                                     Spacer()
                                 }
+
+                                TextField("model (optional; e.g. sonnet/opus/haiku or claude-sonnet-4-5)", text: $model)
+                                    .font(.system(.caption, design: .monospaced))
 
                                 HStack {
                                     Button("Pick Work Dir") { showWorkDirPicker = true }
@@ -547,6 +553,8 @@ struct ContentView: View {
                                 TextField("message", text: $chatInput)
                                     .submitLabel(.send)
                                     .onSubmit { sendChat() }
+                                Button("Interrupt") { sendInterrupt() }
+                                    .disabled(wsTask == nil)
                                 Button("Send") { sendChat() }
                                     .keyboardShortcut(.return, modifiers: [])
                                     .disabled(!canSend)
@@ -752,6 +760,36 @@ struct ContentView: View {
     }
 
     @MainActor
+    private func stopService(serviceID: String) async {
+        let sid = serviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if sid.isEmpty { return }
+        do {
+            let c = try client()
+            _ = try await c.stopService(serviceID: sid)
+            statusText = "Stopped: \(sid)"
+            await refreshServices()
+        } catch {
+            statusText = "Error: \(error)"
+        }
+    }
+
+    @MainActor
+    private func resumeService(serviceID: String) async {
+        let sid = serviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if sid.isEmpty { return }
+        statusText = "Resuming service..."
+        do {
+            let c = try client()
+            _ = try await c.resumeService(serviceID: sid)
+            statusText = "Resumed: \(sid) (connecting WS...)"
+            await refreshServices()
+            connectWS(serviceID: sid)
+        } catch {
+            statusText = "Error: \(error)"
+        }
+    }
+
+    @MainActor
     private func createService() async {
         statusText = "Creating Claude service (may take a few minutes on first run)..."
         do {
@@ -786,6 +824,10 @@ struct ContentView: View {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
             }
             serviceConfig["permission_mode"] = permissionMode.rawValue
+            let modelValue = model.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !modelValue.isEmpty {
+                serviceConfig["model"] = modelValue
+            }
 
             let mcpRaw = mcpServersText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !mcpRaw.isEmpty {
@@ -1076,6 +1118,27 @@ struct ContentView: View {
             }
         } catch {
             statusText = "Permission mode error: \(error)"
+        }
+    }
+
+    private func sendInterrupt() {
+        guard let wsTask else {
+            statusText = "WS not connected"
+            return
+        }
+        do {
+            let payload: [String: Any] = ["type": "cancel"]
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            guard let json = String(data: data, encoding: .utf8) else {
+                throw NousAgentRunnerError.io("failed to encode json")
+            }
+            wsTask.send(.string(json)) { err in
+                if let err {
+                    DispatchQueue.main.async { statusText = "WS send error: \(err)" }
+                }
+            }
+        } catch {
+            statusText = "Interrupt error: \(error)"
         }
     }
 

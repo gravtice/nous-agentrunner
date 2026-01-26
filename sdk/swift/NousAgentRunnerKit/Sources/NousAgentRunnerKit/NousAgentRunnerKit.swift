@@ -170,6 +170,10 @@ public final class NousAgentRunnerClient {
         try await requestJSON(method: "POST", path: "/v1/services/\(serviceID)/start", body: nil, timeoutSeconds: 300)
     }
 
+    public func resumeService(serviceID: String) async throws -> [String: Any] {
+        try await requestJSON(method: "POST", path: "/v1/services/\(serviceID)/resume", body: nil, timeoutSeconds: 1800)
+    }
+
     public func createTunnel(hostPort: Int, guestPort: Int? = nil) async throws -> [String: Any] {
         var body: [String: Any] = ["host_port": hostPort]
         if let guestPort {

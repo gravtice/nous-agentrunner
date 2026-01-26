@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -149,6 +150,16 @@ def _normalize_agents(cfg: dict[str, Any]) -> None:
     cfg["agents"] = out
 
 
+def _normalize_model_fields(cfg: dict[str, Any]) -> None:
+    for field in ("model", "fallback_model"):
+        v = cfg.get(field)
+        if v is None:
+            continue
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError(f"{field} must be a non-empty string")
+        cfg[field] = v.strip()
+
+
 def _normalize_options(cfg: dict[str, Any], share_dirs: list[str]) -> ClaudeAgentOptions:
     cfg = dict(cfg)
     cfg.setdefault("include_partial_messages", True)
@@ -158,6 +169,7 @@ def _normalize_options(cfg: dict[str, Any], share_dirs: list[str]) -> ClaudeAgen
         cfg["allowed_tools"] = _normalize_string_list(cfg.get("allowed_tools"), "allowed_tools")
     if "disallowed_tools" in cfg:
         cfg["disallowed_tools"] = _normalize_string_list(cfg.get("disallowed_tools"), "disallowed_tools")
+    _normalize_model_fields(cfg)
     _normalize_agents(cfg)
     _merge_add_dirs(cfg, share_dirs)
     return ClaudeAgentOptions(**cfg)
@@ -240,6 +252,9 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
 
     max_inline = _env_int("NOUS_MAX_INLINE_BYTES", 8 * 1024 * 1024)
     ask_timeout_seconds = float(os.getenv("NOUS_ASK_TIMEOUT_SECONDS", "300") or "300")
+    first_event_timeout_seconds = float(os.getenv("NOUS_FIRST_EVENT_TIMEOUT_SECONDS", "20") or "20")
+    if first_event_timeout_seconds <= 0:
+        first_event_timeout_seconds = 20.0
     share_dirs = _load_b64_json_env("NOUS_SHARE_DIRS_B64", [])
     if not isinstance(share_dirs, list):
         share_dirs = []
@@ -375,9 +390,51 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
 
                     stream_tool_uses: dict[int, dict[str, Any]] = {}
                     result: ResultMessage | None = None
-                    async for m in client.receive_response():
-                        if cancel_event.is_set():
+                    suppress_output = False
+                    msg_iter = client.receive_response().__aiter__()
+                    first_response_deadline = time.monotonic() + first_event_timeout_seconds
+                    received_response_event = False
+                    while True:
+                        try:
+                            if not received_response_event:
+                                remaining = first_response_deadline - time.monotonic()
+                                if remaining <= 0:
+                                    raise asyncio.TimeoutError()
+                                m = await asyncio.wait_for(msg_iter.__anext__(), timeout=remaining)
+                            else:
+                                m = await msg_iter.__anext__()
+                        except StopAsyncIteration:
                             break
+                        except asyncio.TimeoutError:
+                            model = getattr(options, "model", None) or ""
+                            hint = ""
+                            if isinstance(model, str) and model.strip():
+                                hint = f" (model={model.strip()!r})"
+                            await ws.send_json(
+                                {
+                                    "type": "error",
+                                    "code": "SERVICE_ERROR",
+                                    "message": "no response from claude CLI within "
+                                    + str(int(first_event_timeout_seconds))
+                                    + "s"
+                                    + hint,
+                                }
+                            )
+                            await ws.send_json({"type": "done"})
+                            with contextlib.suppress(Exception):
+                                await ws.close()
+                            return
+                        if not received_response_event and isinstance(
+                            m, (StreamEvent, AssistantMessage, ResultMessage)
+                        ):
+                            received_response_event = True
+                        if cancel_event.is_set() and not suppress_output:
+                            # Keep draining the SDK stream after interrupt so the next query starts clean.
+                            suppress_output = True
+                        if suppress_output:
+                            if isinstance(m, ResultMessage):
+                                result = m
+                            continue
                         if isinstance(m, StreamEvent):
                             delta = _stream_delta_text(m.event)
                             if delta:
@@ -516,6 +573,29 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                         if isinstance(m, ResultMessage):
                             result = m
                             break
+
+                    if cancel_event.is_set():
+                        final_text = "".join(final_text_parts)
+                        await ws.send_json(
+                            {"type": "response.final", "contents": [{"kind": "text", "text": final_text}]}
+                        )
+                        await ws.send_json({"type": "done"})
+                        return
+
+                    if result is not None and result.is_error:
+                        msg = result.result
+                        if not isinstance(msg, str) or msg.strip() == "":
+                            msg = "request failed"
+                        await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": msg})
+                        await ws.send_json({"type": "done"})
+                        return
+                    if result is None:
+                        msg = "".join(final_text_parts).strip()
+                        if not msg:
+                            msg = "claude CLI ended without a result"
+                        await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": msg})
+                        await ws.send_json({"type": "done"})
+                        return
 
                     final_text = "".join(final_text_parts)
                     await ws.send_json(

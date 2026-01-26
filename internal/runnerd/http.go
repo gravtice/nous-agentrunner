@@ -27,6 +27,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/services/{service_id}", s.withAuth(s.handleServicesDelete))
 	mux.HandleFunc("POST /v1/services/{service_id}/start", s.withAuth(s.handleServicesStart))
 	mux.HandleFunc("POST /v1/services/{service_id}/stop", s.withAuth(s.handleServicesStop))
+	mux.HandleFunc("POST /v1/services/{service_id}/resume", s.withAuth(s.handleServicesResume))
 	mux.HandleFunc("POST /v1/services/{service_id}/snapshot", s.withAuth(s.handleServicesSnapshot))
 	mux.HandleFunc("GET /v1/services/types/{service_type}/builtin_tools", s.withAuth(s.handleServiceTypeBuiltinTools))
 

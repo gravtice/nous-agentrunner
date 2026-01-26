@@ -343,6 +343,19 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 {"service_id":"svc_...","state":"running"}
 ```
 
+#### `POST /v1/services/{service_id}/resume`
+
+语义：
+
+- **重建**一个已存在的 Agent Service，并尝试恢复既有会话（相比 `start`，`resume` 会重新创建容器并重新拉起内部进程）
+- 当前实现：仅 `type="claude"`；Runner 会在重建时自动注入 `service_config.resume = <session_id>`（对应 Claude Code CLI 的 `--resume <session_id>`）
+
+返回：
+
+```json
+{"service_id":"svc_...","state":"running","asp_url":"ws://127.0.0.1:<port>/v1/services/svc_.../chat"}
+```
+
 #### `POST /v1/services/{service_id}/snapshot`
 
 请求：
