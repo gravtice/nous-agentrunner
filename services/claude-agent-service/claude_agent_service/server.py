@@ -263,7 +263,7 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
     try:
         service_cfg = _decode_service_config()
     except Exception as e:
-        await ws.send_json({"type": "error", "code": "BAD_CONFIG", "message": str(e)})
+        await ws.send_json({"type": "error", "code": "BAD_CONFIG", "message": str(e), "fatal": True})
         await ws.close()
         return ws
     allowlist_configured = "allowed_tools" in service_cfg
@@ -273,7 +273,7 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
     try:
         options = _normalize_options(service_cfg, share_dirs)
     except Exception as e:
-        await ws.send_json({"type": "error", "code": "BAD_CONFIG", "message": str(e)})
+        await ws.send_json({"type": "error", "code": "BAD_CONFIG", "message": str(e), "fatal": True})
         await ws.close()
         return ws
 
@@ -586,14 +586,14 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                         msg = result.result
                         if not isinstance(msg, str) or msg.strip() == "":
                             msg = "request failed"
-                        await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": msg})
+                        await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": msg, "fatal": False})
                         await ws.send_json({"type": "done"})
                         return
                     if result is None:
                         msg = "".join(final_text_parts).strip()
                         if not msg:
                             msg = "claude CLI ended without a result"
-                        await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": msg})
+                        await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": msg, "fatal": False})
                         await ws.send_json({"type": "done"})
                         return
 
@@ -613,7 +613,7 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                         )
                     await ws.send_json({"type": "done"})
                 except Exception as e:
-                    await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": str(e)})
+                    await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": str(e), "fatal": False})
                     await ws.send_json({"type": "done"})
 
             async for msg in ws:
@@ -622,7 +622,7 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                 try:
                     payload = json.loads(msg.data)
                 except Exception:
-                    await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "invalid json"})
+                    await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "invalid json", "fatal": False})
                     continue
 
                 mtype = payload.get("type")
@@ -637,14 +637,14 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                     ask_id = payload.get("ask_id")
                     answers = payload.get("answers")
                     if not isinstance(ask_id, str) or ask_id.strip() == "":
-                        await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "ask_id is required"})
+                        await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "ask_id is required", "fatal": False})
                         continue
                     if not isinstance(answers, dict):
-                        await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "answers must be an object"})
+                        await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "answers must be an object", "fatal": False})
                         continue
                     fut = pending_asks.get(ask_id)
                     if fut is None or fut.done():
-                        await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "unknown ask_id"})
+                        await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "unknown ask_id", "fatal": False})
                         continue
                     fut.set_result({str(k): str(v) for k, v in answers.items()})
                     continue
@@ -652,34 +652,34 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                 if mtype == "permission_mode.set":
                     mode = payload.get("mode")
                     if not isinstance(mode, str) or mode.strip() == "":
-                        await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "mode is required"})
+                        await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "mode is required", "fatal": False})
                         continue
                     mode = mode.strip()
                     if mode not in {"default", "acceptEdits", "plan", "bypassPermissions"}:
                         await ws.send_json(
-                            {"type": "error", "code": "BAD_REQUEST", "message": f"unsupported mode: {mode!r}"}
+                            {"type": "error", "code": "BAD_REQUEST", "message": f"unsupported mode: {mode!r}", "fatal": False}
                         )
                         continue
                     try:
                         await client.set_permission_mode(bypass_cli_mode if mode == "bypassPermissions" else mode)
                         await set_local_permission_mode(mode)
                     except Exception as e:
-                        await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": str(e)})
+                        await ws.send_json({"type": "error", "code": "SERVICE_ERROR", "message": str(e), "fatal": False})
                     continue
 
                 if mtype != "input":
                     await ws.send_json(
-                        {"type": "error", "code": "BAD_REQUEST", "message": "unsupported message type"}
+                        {"type": "error", "code": "BAD_REQUEST", "message": "unsupported message type", "fatal": False}
                     )
                     continue
 
                 contents = payload.get("contents") or []
                 if not isinstance(contents, list) or not contents:
-                    await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "contents is required"})
+                    await ws.send_json({"type": "error", "code": "BAD_REQUEST", "message": "contents is required", "fatal": False})
                     continue
 
                 if running and not running.done():
-                    await ws.send_json({"type": "error", "code": "BUSY", "message": "previous request still running"})
+                    await ws.send_json({"type": "error", "code": "BUSY", "message": "previous request still running", "fatal": False})
                     continue
 
                 running = asyncio.create_task(run_query(contents))
@@ -691,11 +691,9 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                 with contextlib.suppress(Exception):
                     await running
     except CLINotFoundError as e:
-        await ws.send_json({"type": "error", "code": "CLI_NOT_FOUND", "message": str(e)})
-        await ws.send_json({"type": "done"})
+        await ws.send_json({"type": "error", "code": "CLI_NOT_FOUND", "message": str(e), "fatal": True})
     except Exception as e:
-        await ws.send_json({"type": "error", "code": "SERVICE_UNAVAILABLE", "message": str(e)})
-        await ws.send_json({"type": "done"})
+        await ws.send_json({"type": "error", "code": "SERVICE_UNAVAILABLE", "message": str(e), "fatal": True})
     finally:
         session_tmp.cleanup()
 

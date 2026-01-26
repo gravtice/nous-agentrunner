@@ -5,7 +5,7 @@
 接口：
 
 - `GET /health`
-- `WS /v1/chat`（一条连接=一个 session）
+- `WS /v1/chat`（连接建立后发送 `session.started`；支持 `?session_id=...` 续聊）
   - 事件：`response.delta` / `response.final` / `response.thinking.delta` / `tool.use` / `tool.result` / `agent.ask` / `response.usage` / `permission_mode.updated` / `error` / `done`
 
 运行时约定（由 `nous-guest-runnerd` 注入）：

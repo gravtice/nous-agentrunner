@@ -33,6 +33,13 @@ func (s *Server) handleServiceChatWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	release, ok := s.tryBeginServiceChat(serviceID)
+	if !ok {
+		writeError(w, http.StatusConflict, "SERVICE_BUSY", "service already has an active chat connection", nil)
+		return
+	}
+	defer release()
+
 	log.Printf("ws: client connected service_id=%s", serviceID)
 
 	clientConn, err := wsUpgrader.Upgrade(w, r, nil)
@@ -40,12 +47,13 @@ func (s *Server) handleServiceChatWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer clientConn.Close()
+	clientConn.SetReadLimit(s.maxClientASPMessageBytes())
 
 	sessionID := strings.TrimSpace(svc.SessionID)
 	if sessionID == "" {
 		sessionID, err = newID("sess_", 12)
 		if err != nil {
-			_ = clientConn.WriteJSON(map[string]any{"type": "error", "code": "INTERNAL_ERROR", "message": "failed to allocate session"})
+			_ = clientConn.WriteJSON(map[string]any{"type": "error", "code": "INTERNAL_ERROR", "message": "failed to allocate session", "fatal": true})
 			return
 		}
 		svc.SessionID = sessionID
@@ -58,7 +66,7 @@ func (s *Server) handleServiceChatWS(w http.ResponseWriter, r *http.Request) {
 
 	gc, err := s.ensureGuestReady(r.Context())
 	if err != nil {
-		_ = clientConn.WriteJSON(map[string]any{"type": "error", "code": "GUEST_UNAVAILABLE", "message": err.Error()})
+		_ = clientConn.WriteJSON(map[string]any{"type": "error", "code": "GUEST_UNAVAILABLE", "message": err.Error(), "fatal": true})
 		return
 	}
 
@@ -66,7 +74,7 @@ func (s *Server) handleServiceChatWS(w http.ResponseWriter, r *http.Request) {
 	guestConn, _, err := websocket.DefaultDialer.DialContext(r.Context(), guestWSURL, nil)
 	if err != nil {
 		log.Printf("ws: guest dial failed service_id=%s session_id=%s err=%v", serviceID, sessionID, err)
-		_ = clientConn.WriteJSON(map[string]any{"type": "error", "code": "SERVICE_UNAVAILABLE", "message": err.Error()})
+		_ = clientConn.WriteJSON(map[string]any{"type": "error", "code": "SERVICE_UNAVAILABLE", "message": err.Error(), "fatal": true})
 		return
 	}
 	defer guestConn.Close()
@@ -104,9 +112,13 @@ func proxyWS(ctx context.Context, src, dst, errDst *websocket.Conn, validate fun
 						"type":    "error",
 						"code":    mapErrorCode(err),
 						"message": err.Error(),
+						"fatal":   false,
 					}))
+					if isASPInputMessage(msg) {
+						_ = errDst.WriteMessage(websocket.TextMessage, mustJSON(map[string]any{"type": "done"}))
+					}
 				}
-				return err
+				continue
 			}
 		}
 		if err := dst.WriteMessage(websocket.TextMessage, msg); err != nil {
@@ -137,8 +149,48 @@ func mapErrorCode(err error) string {
 	if err == errPathNotAllowed {
 		return "PATH_NOT_ALLOWED"
 	}
-	if strings.Contains(err.Error(), "INLINE_BYTES_TOO_LARGE") {
+	if err == errInlineBytesTooLarge {
 		return "INLINE_BYTES_TOO_LARGE"
 	}
 	return "BAD_REQUEST"
+}
+
+func (s *Server) tryBeginServiceChat(serviceID string) (func(), bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.activeServiceChats == nil {
+		s.activeServiceChats = make(map[string]bool)
+	}
+	if s.activeServiceChats[serviceID] {
+		return nil, false
+	}
+	s.activeServiceChats[serviceID] = true
+	return func() {
+		s.mu.Lock()
+		delete(s.activeServiceChats, serviceID)
+		s.mu.Unlock()
+	}, true
+}
+
+func (s *Server) maxClientASPMessageBytes() int64 {
+	// One `input` message may include up to MaxInlineBytes bytes, base64 encoded.
+	// Keep the limit tight; large payloads should use source.type="path".
+	const overhead = 512 * 1024
+	if s.cfg.MaxInlineBytes <= 0 {
+		return 1 * 1024 * 1024
+	}
+	encoded := ((s.cfg.MaxInlineBytes + 2) / 3) * 4
+	if encoded < 64*1024 {
+		encoded = 64 * 1024
+	}
+	return encoded + overhead
+}
+
+func isASPInputMessage(msg []byte) bool {
+	var m aspMessage
+	if json.Unmarshal(msg, &m) != nil {
+		return false
+	}
+	return m.Type == "input"
 }

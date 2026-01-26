@@ -15,12 +15,13 @@ type Server struct {
 	ctx context.Context
 	cfg Config
 
-	mu                sync.Mutex
-	shares            []shareEntry
-	services          map[string]Service
-	tunnels           map[string]*tunnelEntry
-	tunnelByHostPort  map[int]string
-	vmRestartRequired bool
+	mu                 sync.Mutex
+	shares             []shareEntry
+	services           map[string]Service
+	tunnels            map[string]*tunnelEntry
+	tunnelByHostPort   map[int]string
+	vmRestartRequired  bool
+	activeServiceChats map[string]bool // service_id -> connected
 }
 
 func NewServer(ctx context.Context, cfg Config) (*Server, error) {

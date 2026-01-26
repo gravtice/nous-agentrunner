@@ -123,3 +123,23 @@ func TestM4_ValidateClientASPMessage_CancelAndInvalid(t *testing.T) {
 		t.Fatalf("expected error for unsupported message type")
 	}
 }
+
+func TestM4_ValidateSource_Base64PaddingBoundary(t *testing.T) {
+	s := &Server{cfg: Config{MaxInlineBytes: 2}}
+
+	if err := s.validateSource(aspSource{
+		Type:     "bytes",
+		Encoding: "base64",
+		Data:     base64.StdEncoding.EncodeToString([]byte("ab")), // 2 bytes, padded base64
+	}); err != nil {
+		t.Fatalf("validateSource(padded 2B): %v", err)
+	}
+
+	if err := s.validateSource(aspSource{
+		Type:     "bytes",
+		Encoding: "base64",
+		Data:     base64.StdEncoding.EncodeToString([]byte("abc")), // 3 bytes
+	}); err == nil || mapErrorCode(err) != "INLINE_BYTES_TOO_LARGE" {
+		t.Fatalf("expected INLINE_BYTES_TOO_LARGE, got %v (code=%q)", err, mapErrorCode(err))
+	}
+}
