@@ -260,6 +260,21 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 }
 ```
 
+重点：开启 thinking（强烈建议）
+
+- 默认不启用：若未设置 `max_thinking_tokens`，ASP 侧不会收到 `response.thinking.delta`。
+- 推荐方式：在 `service_config` 里显式设置 `max_thinking_tokens`（正整数）：
+
+```json
+{"service_config":{"max_thinking_tokens":8000}}
+```
+
+- 兼容方式：在创建 service 时设置环境变量 `MAX_THINKING_TOKENS`（仅当调用方未显式设置 `service_config.max_thinking_tokens` 时 Runner 才会自动映射）：
+
+```json
+{"env":{"MAX_THINKING_TOKENS":"8000"}}
+```
+
 其中 `type="claude"` 的 `service_config`（Claude Agent SDK: `ClaudeAgentOptions`）常用示例：
 
 ```json
@@ -267,6 +282,7 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
   "cwd": "/Users/alice/Work/project",
   "model": "sonnet",
   "fallback_model": "haiku",
+  "max_thinking_tokens": 8000,
   "permission_mode": "default",
   "allowed_tools": ["Read", "Write", "Bash", "AskUserQuestion"],
   "setting_sources": ["project"],
