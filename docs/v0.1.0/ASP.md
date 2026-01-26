@@ -11,9 +11,14 @@ ASP 是 Nous Agent Runner 的**数据面**协议：用于与某个 Agent Service
 - URL：`ws://127.0.0.1:<port>/v1/services/{service_id}/chat`
 - 鉴权：`Authorization: Bearer <token>`
 - 编码：WebSocket 文本帧，内容为 JSON object
+- 会话对象：
+  - `service_id`：通过 ASMP 创建的 service（资源生命周期由 ASMP 管理，支持 stop/resume）
+  - WS 连接：ASP 的传输通道；**同一 `service_id` 同时只允许一条 WS 连接**
+  - `session_id`：对话会话（Agent session）标识；**每个 `service_id` 固定一个 `session_id`**，用于断线续聊与 resume
 - 连接语义：
   - `session_id` 表示一个 Agent session（用于“继续对话”）
   - 当前实现：**一个 `service_id` 绑定一个 `session_id`**，WS 断线后重新连接会复用同一个 `session_id`
+  - 当前实现：同一 `service_id` 同时只允许一条 WS 连接；并发连接会被拒绝（HTTP 409 `SERVICE_BUSY`）
   - 可在同一连接内多轮 `input`，但不支持并发多请求
 
 连接建立后，Runner 会先发送：
@@ -56,7 +61,7 @@ ASP 是 Nous Agent Runner 的**数据面**协议：用于与某个 Agent Service
 注意：
 
 - 使用 `source.type="path"` 时，路径在容器内也必须同路径可用（靠 Share 的“路径一致”挂载实现）。
-- 若校验失败，Runner 会发送 `{"type":"error",...}` 并关闭会话。
+- 若校验失败，Runner 会发送 `{"type":"error",...}`；对 `input` 还会补发 `{"type":"done"}`，连接保持可用（除非 `fatal=true`）。
 
 ### 2.2 `cancel`
 
@@ -182,6 +187,10 @@ Agent 需要用户补充信息（AskUserQuestion）时推送：
 {"type":"error","code":"BAD_REQUEST","message":"..."}
 ```
 
+可选字段：
+
+- `fatal=true`：表示 session 级错误；服务端会关闭 WS 连接（无需等待 `done`）。
+
 来源：
 
 - Runner 侧输入校验可能返回：`PATH_NOT_ALLOWED`、`INLINE_BYTES_TOO_LARGE`、`BAD_REQUEST`
@@ -214,5 +223,7 @@ Agent 需要用户补充信息（AskUserQuestion）时推送：
   - 若收到 `agent.ask`：展示问题并发送 `ask.answer`，然后继续消费后续事件
   - 需要切换权限模式（例如 plan）时发送 `permission_mode.set`（建议在上一轮 `done` 之后）
   - 收到 `response.final` 后继续等待 `done`
-  - 收到 `error` 后也继续等待 `done`（`claude` service 会在错误后补发 `done`）
+  - 收到 `error`：
+    - 若 `fatal=true`：连接将被关闭；可重连后继续（同一 `service_id` 会复用 `session_id`）
+    - 否则：若该错误来自本轮 `input`，通常随后会有 `done`；若没有 `done`，表示该错误不属于一轮 `input`（例如非法消息/不合法 ask.answer 等）
 - 同一连接内不要并发发送多条 `input`；若上一轮未结束再次发送，`claude` service 可能返回 `{"type":"error","code":"BUSY",...}`

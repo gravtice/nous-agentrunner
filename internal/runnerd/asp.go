@@ -42,6 +42,8 @@ type aspSource struct {
 	Data     string `json:"data,omitempty"`
 }
 
+var errInlineBytesTooLarge = errors.New("INLINE_BYTES_TOO_LARGE")
+
 func (s *Server) validateClientASPMessage(raw []byte) error {
 	var base aspMessage
 	if err := json.Unmarshal(raw, &base); err != nil {
@@ -121,15 +123,44 @@ func (s *Server) validateSource(src aspSource) error {
 		if strings.ToLower(strings.TrimSpace(src.Encoding)) != "base64" {
 			return errors.New("bytes encoding must be base64")
 		}
+		decodedLen, ok := base64StdDecodedLen(src.Data)
+		if !ok {
+			return errors.New("invalid base64 data")
+		}
+		if decodedLen > s.cfg.MaxInlineBytes {
+			return errInlineBytesTooLarge
+		}
 		decoded, err := base64.StdEncoding.DecodeString(src.Data)
 		if err != nil {
 			return errors.New("invalid base64 data")
 		}
 		if int64(len(decoded)) > s.cfg.MaxInlineBytes {
-			return errors.New("INLINE_BYTES_TOO_LARGE")
+			return errInlineBytesTooLarge
 		}
 		return nil
 	default:
 		return fmt.Errorf("unsupported source type %q", src.Type)
 	}
+}
+
+func base64StdDecodedLen(s string) (int64, bool) {
+	n := len(s)
+	if n == 0 {
+		return 0, true
+	}
+	if n%4 != 0 {
+		return 0, false
+	}
+	pad := int64(0)
+	if n >= 1 && s[n-1] == '=' {
+		pad++
+		if n >= 2 && s[n-2] == '=' {
+			pad++
+		}
+	}
+	decoded := int64(n/4*3) - pad
+	if decoded < 0 {
+		return 0, false
+	}
+	return decoded, true
 }
