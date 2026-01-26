@@ -269,12 +269,6 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 {"service_config":{"max_thinking_tokens":8000}}
 ```
 
-- 兼容方式：在创建 service 时设置环境变量 `MAX_THINKING_TOKENS`（仅当调用方未显式设置 `service_config.max_thinking_tokens` 时 Runner 才会自动映射）：
-
-```json
-{"env":{"MAX_THINKING_TOKENS":"8000"}}
-```
-
 其中 `type="claude"` 的 `service_config`（Claude Agent SDK: `ClaudeAgentOptions`）常用示例：
 
 ```json

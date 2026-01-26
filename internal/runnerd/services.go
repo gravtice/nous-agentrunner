@@ -83,20 +83,6 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Claude Agent SDK does not read MAX_THINKING_TOKENS from env directly; it expects
-	// ClaudeAgentOptions.max_thinking_tokens (forwarded to `claude --max-thinking-tokens`).
-	// For convenience, map the env var into service_config unless explicitly set by the caller.
-	if v, ok := env["MAX_THINKING_TOKENS"]; ok {
-		if _, exists := req.ServiceConfig["max_thinking_tokens"]; !exists {
-			if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
-				if req.ServiceConfig == nil {
-					req.ServiceConfig = map[string]any{}
-				}
-				req.ServiceConfig["max_thinking_tokens"] = n
-			}
-		}
-	}
-
 	// Validate mcp_servers path if provided as a string.
 	if v, ok := req.ServiceConfig["mcp_servers"]; ok {
 		if p, ok := v.(string); ok && strings.TrimSpace(p) != "" {
