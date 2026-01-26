@@ -2,6 +2,7 @@ package runnerd
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/gravtice/nous-agent-runner/internal/envfile"
 	"github.com/gravtice/nous-agent-runner/internal/platformpaths"
+	"howett.net/plist"
 )
 
 type Config struct {
@@ -60,13 +62,98 @@ func loadInstanceID() string {
 			if err != nil {
 				continue
 			}
-			var cfg instanceConfig
-			if json.Unmarshal(b, &cfg) == nil && cfg.InstanceID != "" {
-				return cfg.InstanceID
+			if instanceID := loadInstanceIDFromConfigJSON(b); instanceID != "" {
+				return instanceID
+			}
+		}
+
+		// If no explicit config is bundled, derive a stable instance ID from the host app bundle identifier.
+		if bundleID := loadBundleIdentifierNearExecutable(exe); bundleID != "" {
+			if instanceID := deriveInstanceIDFromBundleID(bundleID); instanceID != "" {
+				return instanceID
 			}
 		}
 	}
 	return "default"
+}
+
+func loadInstanceIDFromConfigJSON(b []byte) string {
+	var cfg instanceConfig
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		return ""
+	}
+	instanceID := strings.TrimSpace(cfg.InstanceID)
+	if !isSafeInstanceID(instanceID) {
+		return ""
+	}
+	return instanceID
+}
+
+func loadBundleIdentifierNearExecutable(exe string) string {
+	infoPlist := findInfoPlistNearExecutable(exe)
+	if infoPlist == "" {
+		return ""
+	}
+	b, err := os.ReadFile(infoPlist)
+	if err != nil {
+		return ""
+	}
+	var m map[string]any
+	if _, err := plist.Unmarshal(b, &m); err != nil {
+		return ""
+	}
+	bundleID, _ := m["CFBundleIdentifier"].(string)
+	return strings.TrimSpace(bundleID)
+}
+
+func findInfoPlistNearExecutable(exe string) string {
+	dir := filepath.Dir(exe)
+	for i := 0; i < 10; i++ {
+		if filepath.Base(dir) == "Contents" {
+			cand := filepath.Join(dir, "Info.plist")
+			if fi, err := os.Stat(cand); err == nil && !fi.IsDir() {
+				return cand
+			}
+		}
+		if strings.HasSuffix(strings.ToLower(filepath.Base(dir)), ".app") {
+			cand := filepath.Join(dir, "Contents", "Info.plist")
+			if fi, err := os.Stat(cand); err == nil && !fi.IsDir() {
+				return cand
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
+func deriveInstanceIDFromBundleID(bundleID string) string {
+	bundleID = strings.ToLower(strings.TrimSpace(bundleID))
+	if bundleID == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(bundleID))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+func isSafeInstanceID(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func LoadConfig() (Config, error) {
@@ -175,17 +262,13 @@ func LoadConfig() (Config, error) {
 	}
 
 	// Lima uses UNIX domain sockets under $LIMA_HOME/<instance>/, which must be short enough
-	// for UNIX_PATH_MAX (~104 bytes). Prefer CachesDir to keep paths short.
-	limaHome := filepath.Join(paths.CachesDir, "lima")
-	legacyLimaHome := filepath.Join(paths.AppSupportDir, "lima")
-	if _, err := os.Stat(limaHome); os.IsNotExist(err) {
-		if _, err := os.Stat(legacyLimaHome); err == nil {
-			// Best-effort: preserve any existing instance state from older versions.
-			_ = os.MkdirAll(filepath.Dir(limaHome), 0o700)
-			_ = os.Rename(legacyLimaHome, limaHome)
-		}
-	}
+	// for UNIX_PATH_MAX (~104 bytes). Keep LIMA_HOME shared across instances to avoid repeating
+	// <instance_id> in the socket path.
+	limaHome := filepath.Join(filepath.Dir(paths.CachesDir), "lima")
 	limaInstanceName := "nous-" + instanceID
+	if err := os.MkdirAll(limaHome, 0o700); err != nil {
+		return Config{}, err
+	}
 
 	vmCPU := mustParseInt(env["NOUS_AGENT_RUNNER_VM_CPU_CORES"], 0)
 	vmMemMiB := mustParseInt(env["NOUS_AGENT_RUNNER_VM_MEMORY_MB"], 0)

@@ -15,10 +15,6 @@ let package = Package(
             dependencies: [
                 .product(name: "NousAgentRunnerKit", package: "NousAgentRunnerKit"),
             ]
-            ,
-            resources: [
-                .process("Resources"),
-            ]
         ),
     ]
 )

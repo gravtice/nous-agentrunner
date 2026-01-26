@@ -1,6 +1,7 @@
 import SwiftUI
 import NousAgentRunnerKit
 import UniformTypeIdentifiers
+import CryptoKit
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -640,7 +641,8 @@ struct ContentView: View {
             }
         }
         .task {
-            await ensureRunnerRunning()
+            let ok = await ensureRunnerRunning()
+            guard ok else { return }
             await refreshStatus()
             await refreshServices()
             await refreshBuiltinTools()
@@ -672,8 +674,8 @@ struct ContentView: View {
             .appendingPathComponent("Library")
             .appendingPathComponent("Caches")
             .appendingPathComponent("NousAgentRunner")
-            .appendingPathComponent(instanceID)
             .appendingPathComponent("lima")
+            .appendingPathComponent("nous-\(instanceID)")
         NSWorkspace.shared.open(url)
 #endif
     }
@@ -686,14 +688,16 @@ struct ContentView: View {
     }
 
     @MainActor
-    private func ensureRunnerRunning() async {
+    private func ensureRunnerRunning() async -> Bool {
         do {
             if daemon == nil {
                 daemon = try NousAgentRunnerDaemon()
             }
             _ = try await daemon?.ensureRunning()
+            return true
         } catch {
             statusText = "Runner error: \(error)"
+            return false
         }
     }
 
@@ -1278,13 +1282,47 @@ struct ContentView: View {
     }
 
     private func loadInstanceIDFromBundle() -> String {
-        guard let url = Bundle.main.url(forResource: "NousAgentRunnerConfig", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return "default" }
-        if let v = obj["instance_id"] as? String, !v.isEmpty {
-            return v
+        if let url = Bundle.main.url(forResource: "NousAgentRunnerConfig", withExtension: "json"),
+           let data = try? Data(contentsOf: url),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let v = obj["instance_id"] as? String
+        {
+            let trimmed = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            if isSafeInstanceID(trimmed) {
+                return trimmed
+            }
         }
+
+        if let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty {
+            return deriveInstanceIDFromBundleID(bundleID)
+        }
+
         return "default"
+    }
+
+    private func deriveInstanceIDFromBundleID(_ bundleID: String) -> String {
+        let normalized = bundleID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let digest = SHA256.hash(data: Data(normalized.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return String(hex.prefix(12))
+    }
+
+    private func isSafeInstanceID(_ s: String) -> Bool {
+        if s.isEmpty { return false }
+        for scalar in s.unicodeScalars {
+            switch scalar.value {
+            case 0x30...0x39: // 0-9
+                continue
+            case 0x41...0x5A: // A-Z
+                continue
+            case 0x61...0x7A: // a-z
+                continue
+            case 0x2D, 0x2E, 0x5F: // - . _
+                continue
+            default:
+                return false
+            }
+        }
+        return true
     }
 }
