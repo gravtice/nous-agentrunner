@@ -177,12 +177,6 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		State:     guestResp.State,
 		CreatedAt: nowISO8601(),
 	}
-	s.serviceCreateCfgs[serviceID] = serviceCreateConfig{
-		Resources:     req.Resources,
-		RWMounts:      rwMounts,
-		Env:           env,
-		ServiceConfig: req.ServiceConfig,
-	}
 	_ = s.saveServicesLocked()
 	s.mu.Unlock()
 
@@ -241,7 +235,6 @@ func (s *Server) handleServicesDelete(w http.ResponseWriter, r *http.Request) {
 	if vmState != "running" && vmState != "unknown" {
 		s.mu.Lock()
 		delete(s.services, serviceID)
-		delete(s.serviceCreateCfgs, serviceID)
 		_ = s.saveServicesLocked()
 		s.mu.Unlock()
 		writeJSON(w, 200, map[string]any{"deleted": true})
@@ -263,7 +256,6 @@ func (s *Server) handleServicesDelete(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	delete(s.services, serviceID)
-	delete(s.serviceCreateCfgs, serviceID)
 	_ = s.saveServicesLocked()
 	s.mu.Unlock()
 	writeJSON(w, 200, map[string]any{"deleted": true})
@@ -362,106 +354,35 @@ func (s *Server) handleServicesResume(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	svc, ok := s.services[serviceID]
-	createCfg, cfgOK := s.serviceCreateCfgs[serviceID]
-	shares := make([]string, 0, len(s.shares))
-	for _, e := range s.shares {
-		shares = append(shares, filepath.Clean(e.HostPath))
-	}
 	s.mu.Unlock()
 	if !ok {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "service not found", nil)
-		return
-	}
-	if !cfgOK {
-		writeError(w, http.StatusConflict, "RESUME_UNAVAILABLE", "service is missing create config; recreate service", nil)
 		return
 	}
 	if strings.TrimSpace(svc.SessionID) == "" {
 		writeError(w, http.StatusConflict, "RESUME_UNAVAILABLE", "service is missing session_id; recreate service", nil)
 		return
 	}
-	if svc.Type != "claude" {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "unsupported service type", map[string]any{"type": svc.Type})
-		return
-	}
-
-	rwMounts, err := s.validateAndPrepareRWMounts(createCfg.RWMounts)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "PATH_NOT_ALLOWED", err.Error(), nil)
-		return
-	}
-	env, err := validateServiceEnv(createCfg.Env)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error(), nil)
-		return
-	}
-
-	serviceConfig := make(map[string]any, len(createCfg.ServiceConfig)+2)
-	for k, v := range createCfg.ServiceConfig {
-		serviceConfig[k] = v
-	}
-	serviceConfig["resume"] = svc.SessionID
-
-	// Preserve MAX_THINKING_TOKENS env mapping behavior.
-	if v, ok := env["MAX_THINKING_TOKENS"]; ok {
-		if _, exists := serviceConfig["max_thinking_tokens"]; !exists {
-			if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
-				serviceConfig["max_thinking_tokens"] = n
-			}
-		}
-	}
-
-	// Validate mcp_servers path if provided as a string.
-	if v, ok := serviceConfig["mcp_servers"]; ok {
-		if p, ok := v.(string); ok && strings.TrimSpace(p) != "" {
-			if _, _, ok := s.validateAllowedPath(p); !ok {
-				writeError(w, http.StatusBadRequest, "PATH_NOT_ALLOWED", "mcp_servers path is not under any shared directory", nil)
-				return
-			}
-		}
-	}
-
-	log.Printf("services.resume: start service_id=%s type=%s image_ref=%s", serviceID, svc.Type, svc.ImageRef)
 
 	gc, err := s.ensureGuestReady(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GUEST_UNAVAILABLE", err.Error(), nil)
 		return
 	}
-	if err := s.ensureOfflineImageAvailable(r.Context(), gc, svc.ImageRef); err != nil {
-		writeError(w, http.StatusInternalServerError, "IMAGE_IMPORT_FAILED", err.Error(), nil)
-		return
-	}
-
-	payload, err := encodeServiceConfig(serviceConfig)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid service_config", map[string]any{"error": err.Error()})
-		return
-	}
-
-	guestReq := map[string]any{
-		"service_id":         serviceID,
-		"type":               svc.Type,
-		"image_ref":          svc.ImageRef,
-		"resources":          createCfg.Resources,
-		"shares":             shares,
-		"rw_mounts":          rwMounts,
-		"env":                env,
-		"service_config_b64": payload,
-		"max_inline_bytes":   s.cfg.MaxInlineBytes,
-	}
 
 	var guestResp struct {
 		ServiceID string `json:"service_id"`
 		State     string `json:"state"`
 	}
-	if err := gc.postJSON(r.Context(), "/internal/services", guestReq, &guestResp); err != nil {
-		log.Printf("services.resume: guest error service_id=%s err=%v", serviceID, err)
+	if err := gc.postJSON(r.Context(), "/internal/services/"+serviceID+"/start", map[string]any{}, &guestResp); err != nil {
+		var ge *guestHTTPError
+		if errors.As(err, &ge) && ge.Status == http.StatusNotFound {
+			writeError(w, http.StatusConflict, "RESUME_UNAVAILABLE", "service is missing in guest; recreate service", nil)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
 		return
 	}
-
-	log.Printf("services.resume: ok service_id=%s state=%s", serviceID, guestResp.State)
 
 	svc.State = guestResp.State
 	s.mu.Lock()

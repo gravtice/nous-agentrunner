@@ -228,7 +228,8 @@ func LoadConfig() (Config, error) {
 	limaBaseTemplate := strings.TrimSpace(env["NOUS_AGENT_RUNNER_LIMA_BASE_TEMPLATE"])
 	if limaBaseTemplate == "" {
 		// Debian is a stable default and avoids Ubuntu cloud image endpoints that may be blocked in some networks.
-		limaBaseTemplate = "debian-12"
+		// Use the image-only template to avoid inheriting implicit default mounts from base templates.
+		limaBaseTemplate = "_images/debian-12"
 	}
 	if !isSafeLimaTemplateName(limaBaseTemplate) {
 		return Config{}, fmt.Errorf("invalid NOUS_AGENT_RUNNER_LIMA_BASE_TEMPLATE %q", limaBaseTemplate)

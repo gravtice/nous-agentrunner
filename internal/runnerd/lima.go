@@ -374,7 +374,7 @@ func buildLimaYAML(cfg Config, shares []shareEntry, assets *offlineAssets) strin
 	b.WriteString("base:\n")
 	baseTmpl := cfg.LimaBaseTemplate
 	if baseTmpl == "" {
-		baseTmpl = "debian-12"
+		baseTmpl = "_images/debian-12"
 	}
 	b.WriteString("- template:")
 	b.WriteString(baseTmpl)
@@ -414,9 +414,6 @@ func buildLimaYAML(cfg Config, shares []shareEntry, assets *offlineAssets) strin
 		}
 	}
 	b.WriteString("mounts:\n")
-	// Lima's base templates mount "~" read-only by default. We want the Guest layer to see shared dirs as writable,
-	// so per-service rw bind mounts can work while the container layer enforces default RO.
-	b.WriteString("- location: \"~\"\n  writable: true\n")
 	for _, e := range shares {
 		b.WriteString("- location: ")
 		b.WriteString(yamlQuote(e.CanonicalHostPath))

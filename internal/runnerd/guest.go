@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -34,38 +33,18 @@ func (s *Server) ensureGuestReady(ctx context.Context) (*guestClient, error) {
 		return nil
 	}
 
-	for attempt := 0; attempt < 2; attempt++ {
-		if err := step("vm.ensure_running", func() error { return s.ensureVMRunning(ctx) }); err != nil {
-			return nil, err
-		}
-		if err := step("vm.wait_ssh_config", func() error { return s.waitForFile(ctx, s.limaSSHConfigPath(), 5*time.Minute) }); err != nil {
-			return nil, err
-		}
-		if err := step("vm.wait_guest_ssh", func() error { return s.waitForGuestSSH(ctx, 2*time.Minute) }); err != nil {
-			return nil, err
-		}
+	if err := step("vm.ensure_running", func() error { return s.ensureVMRunning(ctx) }); err != nil {
+		return nil, err
+	}
+	if err := step("vm.wait_ssh_config", func() error { return s.waitForFile(ctx, s.limaSSHConfigPath(), 5*time.Minute) }); err != nil {
+		return nil, err
+	}
+	if err := step("vm.wait_guest_ssh", func() error { return s.waitForGuestSSH(ctx, 2*time.Minute) }); err != nil {
+		return nil, err
+	}
 
-		// Lima's base templates mount "~" as read-only by default. Our runtime assumes the Guest sees
-		// shared directories as writable, and enforces default read-only at the container layer.
-		// If the home dir is read-only in the Guest, force a one-time VM recreation to apply our mount override.
-		if err := step("vm.check_home_writable", func() error { return s.ensureGuestHomeWritable(ctx) }); err != nil {
-			if attempt == 0 {
-				log.Printf("vm.check_home_writable: forcing VM recreation to apply mount config")
-				s.mu.Lock()
-				s.vmRestartRequired = true
-				s.mu.Unlock()
-				if err2 := s.restartVM(ctx); err2 != nil {
-					return nil, err2
-				}
-				continue
-			}
-			return nil, err
-		}
-
-		if err := step("guest.install_runnerd", func() error { return s.ensureGuestRunnerdInstalled(ctx) }); err != nil {
-			return nil, err
-		}
-		break
+	if err := step("guest.install_runnerd", func() error { return s.ensureGuestRunnerdInstalled(ctx) }); err != nil {
+		return nil, err
 	}
 
 	localPort, err := pickFreeLocalPort()
@@ -96,19 +75,6 @@ func (s *Server) ensureGuestReady(ctx context.Context) (*guestClient, error) {
 	}()
 
 	return client, nil
-}
-
-func (s *Server) ensureGuestHomeWritable(ctx context.Context) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	if home == "" {
-		return errors.New("missing home directory")
-	}
-	probe := filepath.Join(home, ".nous-agent-runner.probe")
-	cmd := fmt.Sprintf("rm -f %q && (echo ok > %q) && rm -f %q", probe, probe, probe)
-	return s.runInGuest(ctx, cmd)
 }
 
 func (s *Server) startSSHTunnel(ctx context.Context, localPort, guestPort int) (*exec.Cmd, error) {

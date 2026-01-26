@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
@@ -19,7 +18,6 @@ type Server struct {
 	mu                sync.Mutex
 	shares            []shareEntry
 	services          map[string]Service
-	serviceCreateCfgs map[string]serviceCreateConfig
 	tunnels           map[string]*tunnelEntry
 	tunnelByHostPort  map[int]string
 	vmRestartRequired bool
@@ -30,9 +28,7 @@ func NewServer(ctx context.Context, cfg Config) (*Server, error) {
 		ctx:      ctx,
 		cfg:      cfg,
 		services: make(map[string]Service),
-		// Persist enough config to recreate a service for resume.
-		serviceCreateCfgs: make(map[string]serviceCreateConfig),
-		tunnels:           make(map[string]*tunnelEntry),
+		tunnels:  make(map[string]*tunnelEntry),
 		// host_port -> tunnel_id (for idempotent creation)
 		tunnelByHostPort: make(map[int]string),
 	}
@@ -66,15 +62,7 @@ type sharesFile struct {
 }
 
 type servicesFile struct {
-	Services   []Service                      `json:"services"`
-	CreateCfgs map[string]serviceCreateConfig `json:"create_cfgs,omitempty"`
-}
-
-type serviceCreateConfig struct {
-	Resources     serviceResources  `json:"resources"`
-	RWMounts      []string          `json:"rw_mounts"`
-	Env           map[string]string `json:"env,omitempty"`
-	ServiceConfig map[string]any    `json:"service_config,omitempty"`
+	Services []Service `json:"services"`
 }
 
 func (s *Server) sharesPath() string { return filepath.Join(s.cfg.Paths.AppSupportDir, "shares.json") }
@@ -150,15 +138,6 @@ func (s *Server) loadServices() error {
 		}
 		s.services[svc.ServiceID] = svc
 	}
-	for id, cfg := range sf.CreateCfgs {
-		if strings.TrimSpace(id) == "" {
-			continue
-		}
-		if _, ok := s.services[id]; !ok {
-			continue
-		}
-		s.serviceCreateCfgs[id] = cfg
-	}
 	return nil
 }
 
@@ -166,14 +145,6 @@ func (s *Server) saveServicesLocked() error {
 	sf := servicesFile{Services: make([]Service, 0, len(s.services))}
 	for _, svc := range s.services {
 		sf.Services = append(sf.Services, svc)
-	}
-	if len(s.serviceCreateCfgs) > 0 {
-		sf.CreateCfgs = make(map[string]serviceCreateConfig, len(s.serviceCreateCfgs))
-		for id, cfg := range s.serviceCreateCfgs {
-			if _, ok := s.services[id]; ok {
-				sf.CreateCfgs[id] = cfg
-			}
-		}
 	}
 	tmp := s.servicesPath() + ".tmp"
 	b, err := json.MarshalIndent(sf, "", "  ")

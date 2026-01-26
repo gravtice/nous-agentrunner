@@ -370,8 +370,8 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 
 语义：
 
-- **重建**一个已存在的 Agent Service，并尝试恢复既有会话（相比 `start`，`resume` 会重新创建容器并重新拉起内部进程）
-- 当前实现：仅 `type="claude"`；Runner 会在重建时自动注入 `service_config.resume = <session_id>`（对应 Claude Code CLI 的 `--resume <session_id>`）
+- 启动一个已存在的 Agent Service（容器 `start`），用于继续使用既有 `service_id/session_id`
+- 不会重建容器；若 Guest 侧已丢失该 service，会返回 `RESUME_UNAVAILABLE`，需要重新创建 service
 
 返回：
 
