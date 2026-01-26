@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 public enum NousAgentRunnerError: Error {
     case missingConfig(String)
@@ -59,8 +60,11 @@ public final class NousAgentRunnerDaemon {
 
             // Persist logs to App Support for debugging (Pipe is not read and may stall).
             let appSupportDir = try resolveAppSupportDir(instanceID: instanceID)
+            try FileManager.default.createDirectory(at: appSupportDir, withIntermediateDirectories: true)
             let logURL = appSupportDir.appendingPathComponent("runnerd.log")
-            FileManager.default.createFile(atPath: logURL.path, contents: nil)
+            if !FileManager.default.fileExists(atPath: logURL.path) {
+                FileManager.default.createFile(atPath: logURL.path, contents: nil)
+            }
             let fh = try FileHandle(forWritingTo: logURL)
             try fh.seekToEnd()
             let header = "\n--- runnerd start \(Date()) ---\n"
@@ -222,18 +226,51 @@ public final class NousAgentRunnerClient {
 }
 
 private func loadInstanceIDFromBundle() throws -> String {
-    guard let url = Bundle.main.url(forResource: "NousAgentRunnerConfig", withExtension: "json") else {
-        return "default"
+    if let url = Bundle.main.url(forResource: "NousAgentRunnerConfig", withExtension: "json") {
+        let data = try Data(contentsOf: url)
+        let obj = try JSONSerialization.jsonObject(with: data)
+        guard let dict = obj as? [String: Any] else {
+            throw NousAgentRunnerError.invalidConfig("NousAgentRunnerConfig.json must be an object")
+        }
+        if let instanceID = dict["instance_id"] as? String {
+            let trimmed = instanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+            if isSafeInstanceID(trimmed) {
+                return trimmed
+            }
+        }
     }
-    let data = try Data(contentsOf: url)
-    let obj = try JSONSerialization.jsonObject(with: data)
-    guard let dict = obj as? [String: Any] else {
-        throw NousAgentRunnerError.invalidConfig("NousAgentRunnerConfig.json must be an object")
+
+    if let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty {
+        return deriveInstanceIDFromBundleID(bundleID)
     }
-    if let instanceID = dict["instance_id"] as? String, !instanceID.isEmpty {
-        return instanceID
-    }
+
     return "default"
+}
+
+private func deriveInstanceIDFromBundleID(_ bundleID: String) -> String {
+    let normalized = bundleID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let digest = SHA256.hash(data: Data(normalized.utf8))
+    let hex = digest.map { String(format: "%02x", $0) }.joined()
+    return String(hex.prefix(12))
+}
+
+private func isSafeInstanceID(_ s: String) -> Bool {
+    if s.isEmpty { return false }
+    for scalar in s.unicodeScalars {
+        switch scalar.value {
+        case 0x30...0x39: // 0-9
+            continue
+        case 0x41...0x5A: // A-Z
+            continue
+        case 0x61...0x7A: // a-z
+            continue
+        case 0x2D, 0x2E, 0x5F: // - . _
+            continue
+        default:
+            return false
+        }
+    }
+    return true
 }
 
 private func resolveAppSupportDir(instanceID: String) throws -> URL {

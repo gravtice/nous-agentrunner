@@ -131,6 +131,11 @@ create_minimal_app_from_swiftpm() {
   require_cmd swift
   require_cmd file
 
+  local tmp_root
+  tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/nous-app.XXXXXX")"
+  SPM_TMP_ROOT="$tmp_root"
+  local build_path="${tmp_root}/spm-build"
+
   local nous_version="0.1.0"
   local version_file="${ROOT_DIR}/VERSION"
   if [ -f "${version_file}" ]; then
@@ -140,9 +145,9 @@ create_minimal_app_from_swiftpm() {
     fi
   fi
 
-  (cd "$pkg_dir" && swift build -c release >/dev/null)
+  (cd "$pkg_dir" && swift build -c release --build-path "$build_path" >/dev/null)
   local bin_dir
-  bin_dir="$(cd "$pkg_dir" && swift build -c release --show-bin-path)"
+  bin_dir="$(cd "$pkg_dir" && swift build -c release --show-bin-path --build-path "$build_path")"
   [ -d "$bin_dir" ] || fail "swift build output missing: $bin_dir"
 
   local exes=()
@@ -163,9 +168,6 @@ create_minimal_app_from_swiftpm() {
   local exe_name
   exe_name="$(basename "$exe_path")"
 
-  local tmp_root
-  tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/nous-app.XXXXXX")"
-  SPM_TMP_ROOT="$tmp_root"
   local app_dir="${tmp_root}/${exe_name}.app"
 
   ensure_dir "${app_dir}/Contents/MacOS"
@@ -206,10 +208,10 @@ EOF
     ditto "$bundle_dir" "${app_dir}/Contents/Resources/$(basename "$bundle_dir")"
   done < <(find "$bin_dir" -maxdepth 1 -type d -name "*.bundle" -print)
 
-  # Also copy NousAgentRunnerConfig.json into the main app resources if present (SDK uses Bundle.main).
-  local cfg_path
-  cfg_path="$(find "$pkg_dir" -type f -name "NousAgentRunnerConfig.json" -print | head -n 1 || true)"
-  if [ -n "$cfg_path" ] && [ -f "$cfg_path" ]; then
+  # Also copy NousAgentRunnerConfig.json into the main app resources if provided at the package root.
+  # Avoid scanning the whole package directory (e.g. .build artifacts may contain stale copies).
+  local cfg_path="${pkg_dir}/NousAgentRunnerConfig.json"
+  if [ -f "$cfg_path" ]; then
     ditto "$cfg_path" "${app_dir}/Contents/Resources/NousAgentRunnerConfig.json"
   fi
 
