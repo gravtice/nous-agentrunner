@@ -255,19 +255,39 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
   "image_ref": "docker.io/gravtice/nous-claude-agent-service:0.1.0",
   "resources": {"cpu_cores": 2, "memory_mb": 1024, "pids": 256},
   "rw_mounts": ["/Users/alice/Work/project/output"],
-	  "env": {"ANTHROPIC_API_KEY": "..."},
-	  "service_config": {
-	    "cwd": "/Users/alice/Work/project",
-	    "permission_mode": "plan",
-	    "mcp_servers": "/Users/alice/Work/mcp-servers.json",
-	    "allowed_tools": ["Read","Glob","Grep","AskUserQuestion"],
-	    "setting_sources": ["project"],
-	    "agents": {
-      "reviewer": {"description":"Code reviewer","prompt":"Review the diff.","tools":["Read","Grep"],"model":"sonnet"}
+  "env": {"ANTHROPIC_API_KEY": "..."},
+  "service_config": {"cwd": "/Users/alice/Work/project", "mcp_servers": {}}
+}
+```
+
+其中 `type="claude"` 的 `service_config`（Claude Agent SDK: `ClaudeAgentOptions`）常用示例：
+
+```json
+{
+  "cwd": "/Users/alice/Work/project",
+  "model": "sonnet",
+  "fallback_model": "haiku",
+  "permission_mode": "default",
+  "allowed_tools": ["Read", "Write", "Bash", "AskUserQuestion"],
+  "setting_sources": ["project"],
+  "mcp_servers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    }
+  },
+  "agents": {
+    "reviewer": {
+      "description": "Code reviewer",
+      "prompt": "Review the diff.",
+      "tools": ["Read", "Grep"],
+      "model": "sonnet"
     }
   }
 }
 ```
+
+官方参考：<https://platform.claude.com/docs/en/agent-sdk/python#claude-agent-options>
 
 约束（当前实现）：
 
@@ -284,7 +304,7 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
   - key 仅允许字母/数字/下划线（且不允许数字开头），数量与 value 大小有上限
 - `service_config`：
   - 透传给容器内服务；对 `type="claude"`，会被解释为 Python Claude Agent SDK 的 `ClaudeAgentOptions`
-  - 若 `mcp_servers` 是字符串路径，则必须位于 Share 白名单目录下（否则 `PATH_NOT_ALLOWED`）
+  - `mcp_servers`：仅支持 dict（上游直接组装 MCP servers 配置）
   - `permission_mode` 可在会话中通过 ASP `permission_mode.set` 动态切换
 
 返回：
