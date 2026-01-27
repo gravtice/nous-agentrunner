@@ -199,6 +199,7 @@ struct ContentView: View {
     @State private var selectedWorkDirURL: URL?
     @State private var showWorkDirPicker = false
     @AppStorage("nous.demo.service_env") private var serviceEnvText = ""
+    @AppStorage("nous.demo.max_thinking_tokens") private var maxThinkingTokensText = "8000"
     @State private var services: [[String: Any]] = []
     @State private var builtinTools: [String] = []
     @State private var restrictTools = false
@@ -400,6 +401,9 @@ struct ContentView: View {
                                 }
 
                                 TextField("model (optional; e.g. sonnet/opus/haiku or claude-sonnet-4-5)", text: $model)
+                                    .font(.system(.caption, design: .monospaced))
+
+                                TextField("max_thinking_tokens (optional; e.g. 8000)", text: $maxThinkingTokensText)
                                     .font(.system(.caption, design: .monospaced))
 
                                 HStack {
@@ -831,6 +835,14 @@ struct ContentView: View {
             let modelValue = model.trimmingCharacters(in: .whitespacesAndNewlines)
             if !modelValue.isEmpty {
                 serviceConfig["model"] = modelValue
+            }
+
+            let maxThinkingValue = maxThinkingTokensText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !maxThinkingValue.isEmpty {
+                guard let n = Int(maxThinkingValue), n > 0 else {
+                    throw NousAgentRunnerError.invalidConfig("max_thinking_tokens must be a positive integer")
+                }
+                serviceConfig["max_thinking_tokens"] = n
             }
 
             let mcpRaw = mcpServersText.trimmingCharacters(in: .whitespacesAndNewlines)
