@@ -12,6 +12,7 @@ var builtinToolsByServiceType = map[string][]string{
 		"Edit",
 		"Glob",
 		"Grep",
+		"Skill",
 		"MultiEdit",
 		"Read",
 		"WebFetch",
