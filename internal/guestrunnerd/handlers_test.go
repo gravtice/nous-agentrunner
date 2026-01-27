@@ -198,7 +198,7 @@ func TestM2_HandleServiceCreate_BuildsMounts(t *testing.T) {
 	}
 }
 
-func TestM2_HandleServiceCreate_CopiesSkillsIntoClaudeHome(t *testing.T) {
+func TestM2_HandleServiceCreate_BootstrapsSkillsBeforeStart(t *testing.T) {
 	binDir := t.TempDir()
 	_ = writeFakeNerdctl(t, binDir)
 
@@ -256,20 +256,17 @@ func TestM2_HandleServiceCreate_CopiesSkillsIntoClaudeHome(t *testing.T) {
 		t.Fatalf("read nerdctl log: %v", err)
 	}
 	log := string(logBytes)
-	if !strings.Contains(log, "exec svc-abc123 mkdir -p /tmp/.claude/skills") {
-		t.Fatalf("expected mkdir exec in log, got:\n%s", log)
+	if !strings.Contains(log, "-e NOUS_SKILLS_DIR="+skillsDir) {
+		t.Fatalf("expected NOUS_SKILLS_DIR env in log, got:\n%s", log)
 	}
-	if !strings.Contains(log, "exec svc-abc123 rm -rf /tmp/.claude/skills/alpha") {
-		t.Fatalf("expected alpha rm exec in log, got:\n%s", log)
+	if !strings.Contains(log, "sh -lc ") {
+		t.Fatalf("expected sh -lc bootstrap cmd in log, got:\n%s", log)
 	}
-	if !strings.Contains(log, "exec svc-abc123 cp -a "+filepath.Join(skillsDir, "alpha")+" /tmp/.claude/skills/alpha") {
-		t.Fatalf("expected alpha copy exec in log, got:\n%s", log)
+	if !strings.Contains(log, "mkdir -p /tmp/.claude/skills") {
+		t.Fatalf("expected mkdir in bootstrap cmd, got:\n%s", log)
 	}
-	if !strings.Contains(log, "exec svc-abc123 rm -rf /tmp/.claude/skills/beta") {
-		t.Fatalf("expected beta rm exec in log, got:\n%s", log)
-	}
-	if !strings.Contains(log, "exec svc-abc123 cp -a "+filepath.Join(skillsDir, "beta")+" /tmp/.claude/skills/beta") {
-		t.Fatalf("expected beta copy exec in log, got:\n%s", log)
+	if !strings.Contains(log, "cp -a") || !strings.Contains(log, "/tmp/.claude/skills/$name") {
+		t.Fatalf("expected cp into /tmp/.claude/skills in bootstrap cmd, got:\n%s", log)
 	}
 }
 

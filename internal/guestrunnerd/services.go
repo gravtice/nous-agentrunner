@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -172,6 +171,11 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 		}
 	}
 
+	skillsDir := strings.TrimSpace(req.SkillsDir)
+	if skillsDir != "" && req.Type == "claude" {
+		args = append(args, "-e", fmt.Sprintf("NOUS_SKILLS_DIR=%s", skillsDir))
+	}
+
 	if req.Resources.CPUCores > 0 {
 		args = append(args, "--cpus", fmt.Sprintf("%d", req.Resources.CPUCores))
 	}
@@ -198,111 +202,17 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 	}
 
 	args = append(args, req.ImageRef)
+	if req.Type == "claude" && skillsDir != "" {
+		// Claude Code discovers skills only at startup. Copy them into HOME before starting the service.
+		args = append(args, "sh", "-lc", "set -eu; mkdir -p /tmp/.claude/skills; if [ -n \"${NOUS_SKILLS_DIR:-}\" ] && [ -d \"$NOUS_SKILLS_DIR\" ]; then for d in \"$NOUS_SKILLS_DIR\"/*; do [ -d \"$d\" ] || continue; name=\"${d##*/}\"; case \"$name\" in \"\"|.*|__MACOSX|*[!A-Za-z0-9._-]*) continue ;; esac; rm -rf \"/tmp/.claude/skills/$name\"; cp -a \"$d\" \"/tmp/.claude/skills/$name\"; done; fi; exec claude-agent-service")
+	}
 	// Ensure idempotency if caller retries.
 	_, _ = runNerdctl(ctx, "rm", "-f", containerName)
 	_, err := runNerdctl(ctx, args...)
 	if err != nil {
 		return err
 	}
-	s.bestEffortSetupSkillsCopy(ctx, containerName, req)
 	return nil
-}
-
-func (s *Server) bestEffortSetupSkillsCopy(ctx context.Context, containerName string, req createServiceReq) {
-	if req.Type != "claude" {
-		return
-	}
-	skillsDir := strings.TrimSpace(req.SkillsDir)
-	if skillsDir == "" {
-		return
-	}
-
-	entries, err := os.ReadDir(skillsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return
-		}
-		log.Printf("services.skills: warn read skills_dir=%s err=%v", skillsDir, err)
-		return
-	}
-
-	skillNames := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		name := strings.TrimSpace(e.Name())
-		if name == "" || strings.HasPrefix(name, ".") || name == "__MACOSX" {
-			continue
-		}
-		if !isSafeSkillName(name) {
-			continue
-		}
-		skillNames = append(skillNames, name)
-	}
-	if len(skillNames) == 0 {
-		return
-	}
-	sort.Strings(skillNames)
-
-	if _, err := runNerdctl(ctx, "exec", containerName, "mkdir", "-p", "/tmp/.claude/skills"); err != nil {
-		log.Printf("services.skills: warn mkdir in container=%s err=%v", containerName, err)
-		return
-	}
-
-	uid, gid, ok := serviceUser(req.ServiceConfigB64)
-	if ok {
-		spec := fmt.Sprintf("%d:%d", uid, gid)
-		if _, err := runNerdctl(ctx, "exec", containerName, "chown", "-R", spec, "/tmp/.claude"); err != nil {
-			log.Printf("services.skills: warn chown container=%s err=%v", containerName, err)
-		}
-		if _, err := runNerdctl(ctx, "exec", containerName, "chmod", "700", "/tmp/.claude", "/tmp/.claude/skills"); err != nil {
-			log.Printf("services.skills: warn chmod container=%s err=%v", containerName, err)
-		}
-	}
-
-	for _, name := range skillNames {
-		src := filepath.Join(skillsDir, name)
-		dst := filepath.Join("/tmp/.claude/skills", name)
-		if _, err := runNerdctl(ctx, "exec", containerName, "rm", "-rf", dst); err != nil {
-			log.Printf("services.skills: warn rm skill=%s err=%v", name, err)
-			continue
-		}
-		if _, err := runNerdctl(ctx, "exec", containerName, "cp", "-a", src, dst); err != nil {
-			log.Printf("services.skills: warn copy skill=%s err=%v", name, err)
-			continue
-		}
-		if ok {
-			spec := fmt.Sprintf("%d:%d", uid, gid)
-			if _, err := runNerdctl(ctx, "exec", containerName, "chown", "-R", spec, dst); err != nil {
-				log.Printf("services.skills: warn chown skill=%s err=%v", name, err)
-			}
-		}
-	}
-}
-
-func isSafeSkillName(name string) bool {
-	if name == "" {
-		return false
-	}
-	for _, r := range name {
-		switch {
-		case r >= 'a' && r <= 'z':
-		case r >= 'A' && r <= 'Z':
-		case r >= '0' && r <= '9':
-		case r == '-' || r == '_' || r == '.':
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-func serviceUser(serviceConfigB64 string) (uid, gid int, ok bool) {
-	if uid, gid, ok := detectUserForWorkDir(serviceConfigB64); ok {
-		return uid, gid, true
-	}
-	return detectPrimaryUser()
 }
 
 func detectUserForWorkDir(serviceConfigB64 string) (uid, gid int, ok bool) {
