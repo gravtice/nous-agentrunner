@@ -130,6 +130,15 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	skillsDir := filepath.Join(s.cfg.Paths.AppSupportDir, "skills")
+	if err := os.MkdirAll(skillsDir, 0o700); err != nil {
+		log.Printf("services.create: warn mkdir skills_dir=%s err=%v", skillsDir, err)
+		skillsDir = ""
+	} else if _, _, ok := s.validateAllowedPath(skillsDir); !ok {
+		log.Printf("services.create: warn skills_dir not under shared mounts: %s", skillsDir)
+		skillsDir = ""
+	}
+
 	guestReq := map[string]any{
 		"service_id":         serviceID,
 		"type":               req.Type,
@@ -139,6 +148,7 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		"rw_mounts":          rwMounts,
 		"env":                env,
 		"service_config_b64": payload,
+		"skills_dir":         skillsDir,
 		"max_inline_bytes":   s.cfg.MaxInlineBytes,
 	}
 

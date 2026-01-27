@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -26,6 +27,7 @@ type createServiceReq struct {
 	RWMounts         []string          `json:"rw_mounts"`
 	Env              map[string]string `json:"env"`
 	ServiceConfigB64 string            `json:"service_config_b64"`
+	SkillsDir        string            `json:"skills_dir"`
 	MaxInlineBytes   int64             `json:"max_inline_bytes"`
 }
 
@@ -199,7 +201,79 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 	// Ensure idempotency if caller retries.
 	_, _ = runNerdctl(ctx, "rm", "-f", containerName)
 	_, err := runNerdctl(ctx, args...)
-	return err
+	if err != nil {
+		return err
+	}
+	s.bestEffortSetupSkillsSymlinks(ctx, containerName, req)
+	return nil
+}
+
+func (s *Server) bestEffortSetupSkillsSymlinks(ctx context.Context, containerName string, req createServiceReq) {
+	if req.Type != "claude" {
+		return
+	}
+	skillsDir := strings.TrimSpace(req.SkillsDir)
+	if skillsDir == "" {
+		return
+	}
+
+	entries, err := os.ReadDir(skillsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		log.Printf("services.skills: warn read skills_dir=%s err=%v", skillsDir, err)
+		return
+	}
+
+	skillNames := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := strings.TrimSpace(e.Name())
+		if name == "" || strings.HasPrefix(name, ".") || name == "__MACOSX" {
+			continue
+		}
+		if !isSafeSkillName(name) {
+			continue
+		}
+		skillNames = append(skillNames, name)
+	}
+	if len(skillNames) == 0 {
+		return
+	}
+	sort.Strings(skillNames)
+
+	if _, err := runNerdctl(ctx, "exec", containerName, "mkdir", "-p", "/tmp/.claude/skills"); err != nil {
+		log.Printf("services.skills: warn mkdir in container=%s err=%v", containerName, err)
+		return
+	}
+
+	for _, name := range skillNames {
+		target := filepath.Join(skillsDir, name)
+		link := filepath.Join("/tmp/.claude/skills", name)
+		if _, err := runNerdctl(ctx, "exec", containerName, "ln", "-sfn", target, link); err != nil {
+			log.Printf("services.skills: warn link skill=%s err=%v", name, err)
+		}
+	}
+}
+
+func isSafeSkillName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func detectUserForWorkDir(serviceConfigB64 string) (uid, gid int, ok bool) {
