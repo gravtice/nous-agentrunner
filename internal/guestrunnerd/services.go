@@ -204,11 +204,11 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 	if err != nil {
 		return err
 	}
-	s.bestEffortSetupSkillsSymlinks(ctx, containerName, req)
+	s.bestEffortSetupSkillsCopy(ctx, containerName, req)
 	return nil
 }
 
-func (s *Server) bestEffortSetupSkillsSymlinks(ctx context.Context, containerName string, req createServiceReq) {
+func (s *Server) bestEffortSetupSkillsCopy(ctx context.Context, containerName string, req createServiceReq) {
 	if req.Type != "claude" {
 		return
 	}
@@ -250,11 +250,33 @@ func (s *Server) bestEffortSetupSkillsSymlinks(ctx context.Context, containerNam
 		return
 	}
 
+	uid, gid, ok := serviceUser(req.ServiceConfigB64)
+	if ok {
+		spec := fmt.Sprintf("%d:%d", uid, gid)
+		if _, err := runNerdctl(ctx, "exec", containerName, "chown", "-R", spec, "/tmp/.claude"); err != nil {
+			log.Printf("services.skills: warn chown container=%s err=%v", containerName, err)
+		}
+		if _, err := runNerdctl(ctx, "exec", containerName, "chmod", "700", "/tmp/.claude", "/tmp/.claude/skills"); err != nil {
+			log.Printf("services.skills: warn chmod container=%s err=%v", containerName, err)
+		}
+	}
+
 	for _, name := range skillNames {
-		target := filepath.Join(skillsDir, name)
-		link := filepath.Join("/tmp/.claude/skills", name)
-		if _, err := runNerdctl(ctx, "exec", containerName, "ln", "-sfn", target, link); err != nil {
-			log.Printf("services.skills: warn link skill=%s err=%v", name, err)
+		src := filepath.Join(skillsDir, name)
+		dst := filepath.Join("/tmp/.claude/skills", name)
+		if _, err := runNerdctl(ctx, "exec", containerName, "rm", "-rf", dst); err != nil {
+			log.Printf("services.skills: warn rm skill=%s err=%v", name, err)
+			continue
+		}
+		if _, err := runNerdctl(ctx, "exec", containerName, "cp", "-a", src, dst); err != nil {
+			log.Printf("services.skills: warn copy skill=%s err=%v", name, err)
+			continue
+		}
+		if ok {
+			spec := fmt.Sprintf("%d:%d", uid, gid)
+			if _, err := runNerdctl(ctx, "exec", containerName, "chown", "-R", spec, dst); err != nil {
+				log.Printf("services.skills: warn chown skill=%s err=%v", name, err)
+			}
 		}
 	}
 }
@@ -274,6 +296,13 @@ func isSafeSkillName(name string) bool {
 		}
 	}
 	return true
+}
+
+func serviceUser(serviceConfigB64 string) (uid, gid int, ok bool) {
+	if uid, gid, ok := detectUserForWorkDir(serviceConfigB64); ok {
+		return uid, gid, true
+	}
+	return detectPrimaryUser()
 }
 
 func detectUserForWorkDir(serviceConfigB64 string) (uid, gid int, ok bool) {
