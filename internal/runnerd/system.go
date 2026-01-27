@@ -21,7 +21,9 @@ func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	writeJSON(w, 200, map[string]any{
-		"version": "0.1.0",
+		"version":      "0.1.0",
+		"protocols":    map[string]any{"asmp": protocolVersionASMP, "asp": protocolVersionASP},
+		"capabilities": s.protocolCapabilities(),
 		"vm": map[string]any{
 			"state":               vmState,
 			"restart_required":    restartRequired,
