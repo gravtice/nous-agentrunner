@@ -32,26 +32,11 @@ func (s *Server) handleImagesPull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tarPath, err := s.offlineImageTarPath(req.Ref)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "IMAGE_IMPORT_FAILED", err.Error(), nil)
+	if err := s.ensureImageAvailable(r.Context(), gc, req.Ref); err != nil {
+		writeError(w, http.StatusInternalServerError, "IMAGE_UNAVAILABLE", err.Error(), nil)
 		return
 	}
-	if tarPath != "" {
-		if err := s.ensureOfflineImageAvailable(r.Context(), gc, req.Ref, tarPath); err != nil {
-			writeError(w, http.StatusInternalServerError, "IMAGE_IMPORT_FAILED", err.Error(), nil)
-			return
-		}
-		writeJSON(w, 200, map[string]any{"ok": true})
-		return
-	}
-
-	var out any
-	if err := gc.postJSON(r.Context(), "/internal/images/pull", req, &out); err != nil {
-		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
-		return
-	}
-	writeJSON(w, 200, out)
+	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
 type imagesImportRequest struct {

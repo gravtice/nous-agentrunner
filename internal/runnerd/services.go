@@ -146,13 +146,8 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tarPath, err := s.offlineImageTarPath(req.ImageRef)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "IMAGE_IMPORT_FAILED", err.Error(), nil)
-		return
-	}
-	if err := s.ensureOfflineImageAvailable(r.Context(), gc, req.ImageRef, tarPath); err != nil {
-		writeError(w, http.StatusInternalServerError, "IMAGE_IMPORT_FAILED", err.Error(), nil)
+	if err := s.ensureImageAvailable(r.Context(), gc, req.ImageRef); err != nil {
+		writeError(w, http.StatusInternalServerError, "IMAGE_UNAVAILABLE", err.Error(), nil)
 		return
 	}
 
@@ -489,6 +484,39 @@ func (s *Server) stopServiceWithGuest(ctx context.Context, gc *guestClient, serv
 	s.mu.Unlock()
 
 	return guestResp.State, nil
+}
+
+func (s *Server) ensureImageAvailable(ctx context.Context, gc *guestClient, imageRef string) error {
+	imageRef = normalizeImageRef(imageRef)
+	if imageRef == "" || strings.HasPrefix(imageRef, "local/") {
+		return nil
+	}
+
+	tarPath, err := s.offlineImageTarPath(imageRef)
+	if err != nil {
+		return err
+	}
+	if tarPath != "" {
+		return s.ensureOfflineImageAvailable(ctx, gc, imageRef, tarPath)
+	}
+
+	var list struct {
+		Images []string `json:"images"`
+	}
+	if err := gc.getJSON(ctx, "/internal/images", &list); err != nil {
+		return err
+	}
+	for _, existing := range list.Images {
+		if normalizeImageRef(existing) == imageRef {
+			return nil
+		}
+	}
+
+	var out any
+	if err := gc.postJSON(ctx, "/internal/images/pull", map[string]any{"ref": imageRef}, &out); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) ensureOfflineImageAvailable(ctx context.Context, gc *guestClient, imageRef, tarPath string) error {
