@@ -13,6 +13,7 @@
 版本：
 
 - `VERSION` 是打包/离线资产的单一事实来源（`NOUS_VERSION` / `NOUS_VM_VERSION`）。
+- Lima 通过 submodule `references/lima` 固定到 tag `v2.0.3`。
 
 ## 2. 构建二进制
 
