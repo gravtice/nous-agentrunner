@@ -20,6 +20,8 @@ type Server struct {
 	services           map[string]Service
 	tunnels            map[string]*tunnelEntry
 	tunnelByHostPort   map[int]string
+	forwards           map[string]*forwardEntry
+	forwardByGuestPort map[int]string
 	vmRestartRequired  bool
 	activeServiceChats map[string]bool // service_id -> connected
 }
@@ -32,6 +34,9 @@ func NewServer(ctx context.Context, cfg Config) (*Server, error) {
 		tunnels:  make(map[string]*tunnelEntry),
 		// host_port -> tunnel_id (for idempotent creation)
 		tunnelByHostPort: make(map[int]string),
+		forwards:         make(map[string]*forwardEntry),
+		// guest_port -> forward_id (for idempotent creation)
+		forwardByGuestPort: make(map[int]string),
 	}
 	if err := s.loadState(); err != nil {
 		return nil, err

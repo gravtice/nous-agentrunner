@@ -30,6 +30,24 @@ type serviceResources struct {
 	Pids     int `json:"pids"`
 }
 
+func applyClaudeServiceConfigDefaults(cfg map[string]any) {
+	if cfg == nil {
+		return
+	}
+	if _, ok := cfg["setting_sources"]; !ok {
+		cfg["setting_sources"] = []string{"user", "project"}
+	}
+	if _, ok := cfg["allowed_tools"]; !ok {
+		if tools, ok := builtinToolsByServiceType["claude"]; ok && len(tools) > 0 {
+			out := make([]string, len(tools))
+			copy(out, tools)
+			cfg["allowed_tools"] = out
+		} else {
+			cfg["allowed_tools"] = []string{"Skill"}
+		}
+	}
+}
+
 func effectiveServiceState(vmState, serviceState string) string {
 	vmState = strings.TrimSpace(strings.ToLower(vmState))
 	switch vmState {
@@ -64,6 +82,10 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "unsupported service type", map[string]any{"type": req.Type})
 		return
 	}
+	if req.ServiceConfig == nil {
+		req.ServiceConfig = map[string]any{}
+	}
+	applyClaudeServiceConfigDefaults(req.ServiceConfig)
 	if req.ImageRef == "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "image_ref is required", nil)
 		return
@@ -138,6 +160,15 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	skillsDir := filepath.Join(s.cfg.Paths.AppSupportDir, "skills")
+	if err := os.MkdirAll(skillsDir, 0o700); err != nil {
+		log.Printf("services.create: warn mkdir skills_dir=%s err=%v", skillsDir, err)
+		skillsDir = ""
+	} else if _, _, ok := s.validateAllowedPath(skillsDir); !ok {
+		log.Printf("services.create: warn skills_dir not under shared mounts: %s", skillsDir)
+		skillsDir = ""
+	}
+
 	payload, err := encodeServiceConfig(req.ServiceConfig)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid service_config", map[string]any{"error": err.Error()})
@@ -153,6 +184,7 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		"rw_mounts":          rwMounts,
 		"env":                env,
 		"service_config_b64": payload,
+		"skills_dir":         skillsDir,
 		"max_inline_bytes":   s.cfg.MaxInlineBytes,
 	}
 

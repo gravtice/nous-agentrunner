@@ -198,6 +198,78 @@ func TestM2_HandleServiceCreate_BuildsMounts(t *testing.T) {
 	}
 }
 
+func TestM2_HandleServiceCreate_BootstrapsSkillsBeforeStart(t *testing.T) {
+	binDir := t.TempDir()
+	_ = writeFakeNerdctl(t, binDir)
+
+	logPath := filepath.Join(t.TempDir(), "nerdctl.log")
+	t.Setenv("NERDCTL_LOG", logPath)
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+
+	skillsDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(skillsDir, "alpha"), 0o700); err != nil {
+		t.Fatalf("mkdir alpha: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(skillsDir, "beta"), 0o700); err != nil {
+		t.Fatalf("mkdir beta: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillsDir, "not-a-skill.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	s, err := NewServer(Config{ListenAddr: "127.0.0.1", ListenPort: 0, StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	shareDir := t.TempDir()
+	rwDir := filepath.Join(shareDir, "rw")
+	if err := os.MkdirAll(rwDir, 0o700); err != nil {
+		t.Fatalf("mkdir rw: %v", err)
+	}
+
+	cfgB64 := base64.StdEncoding.EncodeToString([]byte(`{"k":"v"}`))
+	reqBody, _ := json.Marshal(createServiceReq{
+		ServiceID:        "abc123",
+		Type:             "claude",
+		ImageRef:         "local/claude-agent-service:0.1.0",
+		Shares:           []string{shareDir},
+		RWMounts:         []string{rwDir},
+		Env:              map[string]string{"ANTHROPIC_API_KEY": "shh"},
+		ServiceConfigB64: cfgB64,
+		SkillsDir:        skillsDir,
+		MaxInlineBytes:   1234,
+	})
+	resp, err := http.Post(ts.URL+"/internal/services", "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST /internal/services: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+
+	logBytes, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read nerdctl log: %v", err)
+	}
+	log := string(logBytes)
+	if !strings.Contains(log, "-e NOUS_SKILLS_DIR="+skillsDir) {
+		t.Fatalf("expected NOUS_SKILLS_DIR env in log, got:\n%s", log)
+	}
+	if !strings.Contains(log, "sh -lc ") {
+		t.Fatalf("expected sh -lc bootstrap cmd in log, got:\n%s", log)
+	}
+	if !strings.Contains(log, "mkdir -p /tmp/.claude/skills") {
+		t.Fatalf("expected mkdir in bootstrap cmd, got:\n%s", log)
+	}
+	if !strings.Contains(log, "cp -a") || !strings.Contains(log, "/tmp/.claude/skills/$name") {
+		t.Fatalf("expected cp into /tmp/.claude/skills in bootstrap cmd, got:\n%s", log)
+	}
+}
+
 func TestRunNerdctl_RedactsEnvValuesInError(t *testing.T) {
 	binDir := t.TempDir()
 	_ = writeFailingNerdctl(t, binDir)
