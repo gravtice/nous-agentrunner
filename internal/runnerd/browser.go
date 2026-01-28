@@ -238,6 +238,7 @@ func (s *Server) ensureAgentBrowserRuntimeInGuest(ctx context.Context, version s
 		`  sudo -n mkdir -p "$NODE_DIR.tmp"`,
 		`  sudo -n chown -R "$user:$group" "$NODE_DIR.tmp"`,
 		`  cp -a "$extracted/." "$NODE_DIR.tmp/"`,
+		`  sudo -n rm -rf "$NODE_DIR"`,
 		`  sudo -n mv "$NODE_DIR.tmp" "$NODE_DIR"`,
 		`  rm -rf "$tmpdir"`,
 		`fi`,
