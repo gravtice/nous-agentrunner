@@ -255,7 +255,7 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
   "image_ref": "docker.io/gravtice/nous-claude-agent-service:0.1.0",
   "resources": {"cpu_cores": 2, "memory_mb": 1024, "pids": 256},
   "rw_mounts": ["/Users/alice/Work/project/output"],
-  "env": {"ANTHROPIC_API_KEY": "..."},
+  "env": {"ANTHROPIC_AUTH_TOKEN": "..."},
   "service_config": {"cwd": "/Users/alice/Work/project", "mcp_servers": {}}
 }
 ```
@@ -462,7 +462,7 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 
 1. 发现 `<port>` 与 `<token>`（见第 2 节），调用 `GET /v1/system/status` 确认 Runner 可用
 2. `POST /v1/shares` 加入你的工程目录；如返回 `vm_restart_required=true` 或 `system.status.vm.restart_required=true`，调用 `POST /v1/system/vm/restart`
-3. `POST /v1/images/pull` 拉取官方镜像（或用 `images/import` 导入 `local/*`）
+3. （可选）`POST /v1/images/pull` 预拉取官方镜像；`POST /v1/services` 在缺镜像时也会自动导入离线镜像或拉取在线镜像
 4. （可选）若需要把 Host 本地服务暴露给容器：`POST /v1/tunnels`
 5. `POST /v1/services` 创建 service，拿到 `service_id/asp_url`
 6. 用 ASP 打开 `asp_url` WebSocket 对话（见 `docs/v0.1.0/ASP.md`）
