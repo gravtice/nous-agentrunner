@@ -20,6 +20,7 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	go s.runIdleServiceReaper(ctx)
 
 	addr := fmt.Sprintf("%s:%d", cfg.ListenAddr, cfg.ListenPort)
 	ln, err := net.Listen("tcp", addr)

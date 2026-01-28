@@ -1,7 +1,6 @@
 import SwiftUI
 import NousAgentRunnerKit
 import UniformTypeIdentifiers
-import CryptoKit
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -159,7 +158,7 @@ private struct AskSheetView: View {
 
 struct ContentView: View {
     @State private var statusText = "Not loaded"
-    @State private var imageRef = "docker.io/gravtice/nous-claude-agent-service:0.1.6"
+    @State private var imageRef = "docker.io/gravtice/nous-claude-agent-service:0.2.1"
 
     private enum SystemPromptMode: String, CaseIterable, Identifiable {
         case builtin
@@ -199,6 +198,7 @@ struct ContentView: View {
     @State private var selectedWorkDirURL: URL?
     @State private var showWorkDirPicker = false
     @AppStorage("nous.demo.service_env") private var serviceEnvText = ""
+    @AppStorage("nous.demo.max_thinking_tokens") private var maxThinkingTokensText = "8000"
     @State private var services: [[String: Any]] = []
     @State private var builtinTools: [String] = []
     @State private var restrictTools = false
@@ -207,6 +207,7 @@ struct ContentView: View {
     @State private var mcpServersText = ""
     @State private var agentsText = ""
     @State private var showSettings = false
+    @State private var showSkills = false
     @State private var serviceID: String?
     @State private var workDirPath: String?
     @State private var chatInput = ""
@@ -291,6 +292,7 @@ struct ContentView: View {
                 Button("Restart VM") { Task { await restartVM() } }
                 Button("Create Service") { Task { await createService() } }
                 Button("Settings") { showSettings = true }
+                Button("Skills") { showSkills = true }
                 Button("Open Logs") { openRunnerLogs() }
                 Button("Open VM Logs") { openVMLogs() }
                 if let serviceID {
@@ -400,6 +402,9 @@ struct ContentView: View {
                                 }
 
                                 TextField("model (optional; e.g. sonnet/opus/haiku or claude-sonnet-4-5)", text: $model)
+                                    .font(.system(.caption, design: .monospaced))
+
+                                TextField("max_thinking_tokens (optional; e.g. 8000)", text: $maxThinkingTokensText)
                                     .font(.system(.caption, design: .monospaced))
 
                                 HStack {
@@ -613,6 +618,9 @@ struct ContentView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(serviceEnvText: $serviceEnvText)
         }
+        .sheet(isPresented: $showSkills) {
+            SkillsView()
+        }
         .sheet(item: $pendingAsk) { ask in
             AskSheetView(
                 ask: ask,
@@ -656,26 +664,14 @@ struct ContentView: View {
 
     private func openRunnerLogs() {
 #if canImport(AppKit)
-        let instanceID = loadInstanceIDFromBundle()
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library")
-            .appendingPathComponent("Application Support")
-            .appendingPathComponent("NousAgentRunner")
-            .appendingPathComponent(instanceID)
-            .appendingPathComponent("runnerd.log")
+        let url = DemoPaths.runnerLogURL()
         NSWorkspace.shared.activateFileViewerSelecting([url])
 #endif
     }
 
     private func openVMLogs() {
 #if canImport(AppKit)
-        let instanceID = loadInstanceIDFromBundle()
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library")
-            .appendingPathComponent("Caches")
-            .appendingPathComponent("NousAgentRunner")
-            .appendingPathComponent("lima")
-            .appendingPathComponent("nous-\(instanceID)")
+        let url = DemoPaths.vmLogsDirURL()
         NSWorkspace.shared.open(url)
 #endif
     }
@@ -831,6 +827,14 @@ struct ContentView: View {
             let modelValue = model.trimmingCharacters(in: .whitespacesAndNewlines)
             if !modelValue.isEmpty {
                 serviceConfig["model"] = modelValue
+            }
+
+            let maxThinkingValue = maxThinkingTokensText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !maxThinkingValue.isEmpty {
+                guard let n = Int(maxThinkingValue), n > 0 else {
+                    throw NousAgentRunnerError.invalidConfig("max_thinking_tokens must be a positive integer")
+                }
+                serviceConfig["max_thinking_tokens"] = n
             }
 
             let mcpRaw = mcpServersText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1277,51 +1281,6 @@ struct ContentView: View {
             if b >= 97 && b <= 122 { continue } // a-z
             if i > 0 && b >= 48 && b <= 57 { continue } // 0-9
             return false
-        }
-        return true
-    }
-
-    private func loadInstanceIDFromBundle() -> String {
-        if let url = Bundle.main.url(forResource: "NousAgentRunnerConfig", withExtension: "json"),
-           let data = try? Data(contentsOf: url),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let v = obj["instance_id"] as? String
-        {
-            let trimmed = v.trimmingCharacters(in: .whitespacesAndNewlines)
-            if isSafeInstanceID(trimmed) {
-                return trimmed
-            }
-        }
-
-        if let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty {
-            return deriveInstanceIDFromBundleID(bundleID)
-        }
-
-        return "default"
-    }
-
-    private func deriveInstanceIDFromBundleID(_ bundleID: String) -> String {
-        let normalized = bundleID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let digest = SHA256.hash(data: Data(normalized.utf8))
-        let hex = digest.map { String(format: "%02x", $0) }.joined()
-        return String(hex.prefix(12))
-    }
-
-    private func isSafeInstanceID(_ s: String) -> Bool {
-        if s.isEmpty { return false }
-        for scalar in s.unicodeScalars {
-            switch scalar.value {
-            case 0x30...0x39: // 0-9
-                continue
-            case 0x41...0x5A: // A-Z
-                continue
-            case 0x61...0x7A: // a-z
-                continue
-            case 0x2D, 0x2E, 0x5F: // - . _
-                continue
-            default:
-                return false
-            }
         }
         return true
     }

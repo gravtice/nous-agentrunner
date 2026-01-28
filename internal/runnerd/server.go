@@ -55,12 +55,15 @@ type Share struct {
 }
 
 type Service struct {
-	ServiceID string `json:"service_id"`
-	SessionID string `json:"session_id,omitempty"`
-	Type      string `json:"type"`
-	ImageRef  string `json:"image_ref"`
-	State     string `json:"state"`
-	CreatedAt string `json:"created_at"`
+	ServiceID          string `json:"service_id"`
+	SessionID          string `json:"session_id,omitempty"`
+	Type               string `json:"type"`
+	ImageRef           string `json:"image_ref"`
+	State              string `json:"state"`
+	CreatedAt          string `json:"created_at"`
+	IdleTimeoutSeconds int    `json:"idle_timeout_seconds,omitempty"`
+	LastActivityAt     string `json:"last_activity_at,omitempty"`
+	StopReason         string `json:"stop_reason,omitempty"`
 }
 
 type sharesFile struct {

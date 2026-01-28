@@ -11,21 +11,41 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type createServiceRequest struct {
-	Type          string            `json:"type"`
-	ImageRef      string            `json:"image_ref"`
-	Resources     serviceResources  `json:"resources"`
-	RWMounts      []string          `json:"rw_mounts"`
-	Env           map[string]string `json:"env"`
-	ServiceConfig map[string]any    `json:"service_config"`
+	Type               string            `json:"type"`
+	ImageRef           string            `json:"image_ref"`
+	Resources          serviceResources  `json:"resources"`
+	RWMounts           []string          `json:"rw_mounts"`
+	Env                map[string]string `json:"env"`
+	ServiceConfig      map[string]any    `json:"service_config"`
+	IdleTimeoutSeconds int               `json:"idle_timeout_seconds"`
 }
 
 type serviceResources struct {
 	CPUCores int `json:"cpu_cores"`
 	MemoryMB int `json:"memory_mb"`
 	Pids     int `json:"pids"`
+}
+
+func applyClaudeServiceConfigDefaults(cfg map[string]any) {
+	if cfg == nil {
+		return
+	}
+	if _, ok := cfg["setting_sources"]; !ok {
+		cfg["setting_sources"] = []string{"user", "project"}
+	}
+	if _, ok := cfg["allowed_tools"]; !ok {
+		if tools, ok := builtinToolsByServiceType["claude"]; ok && len(tools) > 0 {
+			out := make([]string, len(tools))
+			copy(out, tools)
+			cfg["allowed_tools"] = out
+		} else {
+			cfg["allowed_tools"] = []string{"Skill"}
+		}
+	}
 }
 
 func effectiveServiceState(vmState, serviceState string) string {
@@ -62,6 +82,10 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "unsupported service type", map[string]any{"type": req.Type})
 		return
 	}
+	if req.ServiceConfig == nil {
+		req.ServiceConfig = map[string]any{}
+	}
+	applyClaudeServiceConfigDefaults(req.ServiceConfig)
 	if req.ImageRef == "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "image_ref is required", nil)
 		return
@@ -83,20 +107,6 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Claude Agent SDK does not read MAX_THINKING_TOKENS from env directly; it expects
-	// ClaudeAgentOptions.max_thinking_tokens (forwarded to `claude --max-thinking-tokens`).
-	// For convenience, map the env var into service_config unless explicitly set by the caller.
-	if v, ok := env["MAX_THINKING_TOKENS"]; ok {
-		if _, exists := req.ServiceConfig["max_thinking_tokens"]; !exists {
-			if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
-				if req.ServiceConfig == nil {
-					req.ServiceConfig = map[string]any{}
-				}
-				req.ServiceConfig["max_thinking_tokens"] = n
-			}
-		}
-	}
-
 	// Validate mcp_servers path if provided as a string.
 	if v, ok := req.ServiceConfig["mcp_servers"]; ok {
 		if p, ok := v.(string); ok && strings.TrimSpace(p) != "" {
@@ -104,6 +114,18 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusBadRequest, "PATH_NOT_ALLOWED", "mcp_servers path is not under any shared directory", nil)
 				return
 			}
+		}
+	}
+
+	if req.IdleTimeoutSeconds < 0 {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "idle_timeout_seconds must be >= 0", nil)
+		return
+	}
+	if req.IdleTimeoutSeconds > 0 {
+		d := time.Duration(req.IdleTimeoutSeconds) * time.Second
+		if d/time.Second != time.Duration(req.IdleTimeoutSeconds) {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "idle_timeout_seconds is too large", nil)
+			return
 		}
 	}
 
@@ -138,6 +160,15 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	skillsDir := filepath.Join(s.cfg.Paths.AppSupportDir, "skills")
+	if err := os.MkdirAll(skillsDir, 0o700); err != nil {
+		log.Printf("services.create: warn mkdir skills_dir=%s err=%v", skillsDir, err)
+		skillsDir = ""
+	} else if _, _, ok := s.validateAllowedPath(skillsDir); !ok {
+		log.Printf("services.create: warn skills_dir not under shared mounts: %s", skillsDir)
+		skillsDir = ""
+	}
+
 	payload, err := encodeServiceConfig(req.ServiceConfig)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid service_config", map[string]any{"error": err.Error()})
@@ -153,6 +184,7 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		"rw_mounts":          rwMounts,
 		"env":                env,
 		"service_config_b64": payload,
+		"skills_dir":         skillsDir,
 		"max_inline_bytes":   s.cfg.MaxInlineBytes,
 	}
 
@@ -168,14 +200,17 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("services.create: ok service_id=%s state=%s", serviceID, guestResp.State)
 
+	now := nowISO8601()
 	s.mu.Lock()
 	s.services[serviceID] = Service{
-		ServiceID: serviceID,
-		SessionID: sessionID,
-		Type:      req.Type,
-		ImageRef:  req.ImageRef,
-		State:     guestResp.State,
-		CreatedAt: nowISO8601(),
+		ServiceID:          serviceID,
+		SessionID:          sessionID,
+		Type:               req.Type,
+		ImageRef:           req.ImageRef,
+		State:              guestResp.State,
+		CreatedAt:          now,
+		IdleTimeoutSeconds: req.IdleTimeoutSeconds,
+		LastActivityAt:     now,
 	}
 	_ = s.saveServicesLocked()
 	s.mu.Unlock()
@@ -268,7 +303,7 @@ func (s *Server) handleServicesStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	svc, ok := s.services[serviceID]
+	_, ok := s.services[serviceID]
 	s.mu.Unlock()
 	if !ok {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "service not found", nil)
@@ -281,30 +316,13 @@ func (s *Server) handleServicesStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var guestResp struct {
-		ServiceID string `json:"service_id"`
-		State     string `json:"state"`
-	}
-	if err := gc.postJSON(r.Context(), "/internal/services/"+serviceID+"/stop", map[string]any{}, &guestResp); err != nil {
-		var ge *guestHTTPError
-		if !errors.As(err, &ge) || ge.Status != http.StatusNotFound {
-			writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
-			return
-		}
-		// If the guest forgot the service, stopping is effectively a no-op.
-		guestResp = struct {
-			ServiceID string `json:"service_id"`
-			State     string `json:"state"`
-		}{ServiceID: serviceID, State: "stopped"}
+	state, err := s.stopServiceWithGuest(r.Context(), gc, serviceID, "manual")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
+		return
 	}
 
-	svc.State = guestResp.State
-	s.mu.Lock()
-	s.services[serviceID] = svc
-	_ = s.saveServicesLocked()
-	s.mu.Unlock()
-
-	writeJSON(w, http.StatusOK, map[string]any{"service_id": serviceID, "state": guestResp.State})
+	writeJSON(w, http.StatusOK, map[string]any{"service_id": serviceID, "state": state})
 }
 
 func (s *Server) handleServicesStart(w http.ResponseWriter, r *http.Request) {
@@ -337,6 +355,8 @@ func (s *Server) handleServicesStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	svc.State = guestResp.State
+	svc.StopReason = ""
+	svc.LastActivityAt = nowISO8601()
 	s.mu.Lock()
 	s.services[serviceID] = svc
 	_ = s.saveServicesLocked()
@@ -385,6 +405,8 @@ func (s *Server) handleServicesResume(w http.ResponseWriter, r *http.Request) {
 	}
 
 	svc.State = guestResp.State
+	svc.StopReason = ""
+	svc.LastActivityAt = nowISO8601()
 	s.mu.Lock()
 	s.services[serviceID] = svc
 	_ = s.saveServicesLocked()
@@ -439,6 +461,39 @@ func (s *Server) serviceASPURL(serviceID string) string {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+func (s *Server) stopServiceWithGuest(ctx context.Context, gc *guestClient, serviceID, stopReason string) (string, error) {
+	var guestResp struct {
+		ServiceID string `json:"service_id"`
+		State     string `json:"state"`
+	}
+	if err := gc.postJSON(ctx, "/internal/services/"+serviceID+"/stop", map[string]any{}, &guestResp); err != nil {
+		var ge *guestHTTPError
+		if !errors.As(err, &ge) || ge.Status != http.StatusNotFound {
+			return "", err
+		}
+		// If the guest forgot the service, stopping is effectively a no-op.
+		guestResp = struct {
+			ServiceID string `json:"service_id"`
+			State     string `json:"state"`
+		}{ServiceID: serviceID, State: "stopped"}
+	}
+
+	s.mu.Lock()
+	svc, ok := s.services[serviceID]
+	if ok {
+		svc.State = guestResp.State
+		if stopReason == "manual" || (stopReason != "" && strings.TrimSpace(svc.StopReason) == "") {
+			svc.StopReason = stopReason
+		}
+		svc.LastActivityAt = nowISO8601()
+		s.services[serviceID] = svc
+		_ = s.saveServicesLocked()
+	}
+	s.mu.Unlock()
+
+	return guestResp.State, nil
+}
 
 func (s *Server) ensureOfflineImageAvailable(ctx context.Context, gc *guestClient, imageRef string) error {
 	assets, err := s.prepareOfflineAssets()

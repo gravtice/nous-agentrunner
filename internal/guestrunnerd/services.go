@@ -26,6 +26,7 @@ type createServiceReq struct {
 	RWMounts         []string          `json:"rw_mounts"`
 	Env              map[string]string `json:"env"`
 	ServiceConfigB64 string            `json:"service_config_b64"`
+	SkillsDir        string            `json:"skills_dir"`
 	MaxInlineBytes   int64             `json:"max_inline_bytes"`
 }
 
@@ -170,6 +171,11 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 		}
 	}
 
+	skillsDir := strings.TrimSpace(req.SkillsDir)
+	if skillsDir != "" && req.Type == "claude" {
+		args = append(args, "-e", fmt.Sprintf("NOUS_SKILLS_DIR=%s", skillsDir))
+	}
+
 	if req.Resources.CPUCores > 0 {
 		args = append(args, "--cpus", fmt.Sprintf("%d", req.Resources.CPUCores))
 	}
@@ -196,10 +202,17 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 	}
 
 	args = append(args, req.ImageRef)
+	if req.Type == "claude" && skillsDir != "" {
+		// Claude Code discovers skills only at startup. Copy them into HOME before starting the service.
+		args = append(args, "sh", "-lc", "set -eu; mkdir -p /tmp/.claude/skills; if [ -n \"${NOUS_SKILLS_DIR:-}\" ] && [ -d \"$NOUS_SKILLS_DIR\" ]; then for d in \"$NOUS_SKILLS_DIR\"/*; do [ -d \"$d\" ] || continue; name=\"${d##*/}\"; case \"$name\" in \"\"|.*|__MACOSX|*[!A-Za-z0-9._-]*) continue ;; esac; rm -rf \"/tmp/.claude/skills/$name\"; cp -a \"$d\" \"/tmp/.claude/skills/$name\"; done; fi; exec claude-agent-service")
+	}
 	// Ensure idempotency if caller retries.
 	_, _ = runNerdctl(ctx, "rm", "-f", containerName)
 	_, err := runNerdctl(ctx, args...)
-	return err
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func detectUserForWorkDir(serviceConfigB64 string) (uid, gid int, ok bool) {

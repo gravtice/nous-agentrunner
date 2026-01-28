@@ -1,7 +1,7 @@
 # Nous Agent Runner version manifest (source of truth for packaging)
 
 # Main product version (also used as the default service image tag).
-NOUS_VERSION=0.1.6
+NOUS_VERSION=0.2.1
 
 # VM OS image version used by offline assets (arm64).
 # This must match the qcow2 filename downloaded by `scripts/macos/fetch_offline_assets.sh`.
