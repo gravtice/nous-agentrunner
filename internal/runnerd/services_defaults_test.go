@@ -30,3 +30,28 @@ func TestApplyClaudeServiceConfigDefaults_DoesNotOverrideSettingSources(t *testi
 	}
 }
 
+func TestApplyClaudeServiceConfigDefaults_SetsAllowedToolsWhenMissing(t *testing.T) {
+	cfg := map[string]any{}
+	applyClaudeServiceConfigDefaults(cfg)
+	got, ok := cfg["allowed_tools"].([]string)
+	if !ok {
+		t.Fatalf("allowed_tools type=%T", cfg["allowed_tools"])
+	}
+	want := builtinToolsByServiceType["claude"]
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("allowed_tools=%v", got)
+	}
+}
+
+func TestApplyClaudeServiceConfigDefaults_DoesNotOverrideAllowedTools(t *testing.T) {
+	existing := []any{"Read"}
+	cfg := map[string]any{"allowed_tools": existing}
+	applyClaudeServiceConfigDefaults(cfg)
+	got, ok := cfg["allowed_tools"].([]any)
+	if !ok {
+		t.Fatalf("allowed_tools type=%T", cfg["allowed_tools"])
+	}
+	if &got[0] != &existing[0] {
+		t.Fatalf("expected existing slice preserved")
+	}
+}
