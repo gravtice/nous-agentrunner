@@ -134,7 +134,10 @@ public final class NousAgentRunnerClient {
         try await requestJSON(method: "POST", path: "/v1/system/vm/restart", body: nil, timeoutSeconds: 1800)
     }
 
-    public func createClaudeService(imageRef: String, rwMounts: [String], env: [String: String] = [:], serviceConfig: [String: Any]) async throws -> [String: Any] {
+    public func createClaudeService(imageRef: String, rwMounts: [String], env: [String: String] = [:], idleTimeoutSeconds: Int = 0, serviceConfig: [String: Any]) async throws -> [String: Any] {
+        if idleTimeoutSeconds < 0 {
+            throw NousAgentRunnerError.invalidConfig("idle_timeout_seconds must be >= 0")
+        }
         let body: [String: Any] = [
             "type": "claude",
             "image_ref": imageRef,
@@ -145,6 +148,7 @@ public final class NousAgentRunnerClient {
             ],
             "rw_mounts": rwMounts,
             "env": env,
+            "idle_timeout_seconds": idleTimeoutSeconds,
             "service_config": serviceConfig,
         ]
         return try await requestJSON(method: "POST", path: "/v1/services", body: body, timeoutSeconds: 1800)
