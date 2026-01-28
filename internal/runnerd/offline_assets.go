@@ -145,6 +145,18 @@ func (s *Server) prepareOfflineAssets() (*offlineAssets, error) {
 	}, nil
 }
 
+func (s *Server) offlineImageTarPath(imageRef string) (string, error) {
+	imageRef = normalizeImageRef(imageRef)
+	if imageRef == "" {
+		return "", nil
+	}
+	assets, err := s.prepareOfflineAssets()
+	if err != nil || assets == nil || len(assets.Images) == 0 {
+		return "", err
+	}
+	return strings.TrimSpace(assets.Images[imageRef]), nil
+}
+
 func validateOfflineAsset(e offlineAssetEntry, name string) (offlineAssetEntry, error) {
 	e.Arch = strings.TrimSpace(e.Arch)
 	e.File = strings.TrimSpace(e.File)

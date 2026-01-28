@@ -146,7 +146,12 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.ensureOfflineImageAvailable(r.Context(), gc, req.ImageRef); err != nil {
+	tarPath, err := s.offlineImageTarPath(req.ImageRef)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "IMAGE_IMPORT_FAILED", err.Error(), nil)
+		return
+	}
+	if err := s.ensureOfflineImageAvailable(r.Context(), gc, req.ImageRef, tarPath); err != nil {
 		writeError(w, http.StatusInternalServerError, "IMAGE_IMPORT_FAILED", err.Error(), nil)
 		return
 	}
@@ -486,13 +491,9 @@ func (s *Server) stopServiceWithGuest(ctx context.Context, gc *guestClient, serv
 	return guestResp.State, nil
 }
 
-func (s *Server) ensureOfflineImageAvailable(ctx context.Context, gc *guestClient, imageRef string) error {
-	assets, err := s.prepareOfflineAssets()
-	if err != nil || assets == nil || len(assets.Images) == 0 {
-		return err
-	}
-	tarPath, ok := assets.Images[imageRef]
-	if !ok || tarPath == "" {
+func (s *Server) ensureOfflineImageAvailable(ctx context.Context, gc *guestClient, imageRef, tarPath string) error {
+	tarPath = strings.TrimSpace(tarPath)
+	if tarPath == "" {
 		return nil
 	}
 	if _, _, ok := s.validateAllowedPath(tarPath); !ok {
