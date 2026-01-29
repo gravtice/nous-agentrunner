@@ -126,6 +126,39 @@ public final class NousAgentRunnerClient {
         try await requestJSON(method: "POST", path: "/v1/shares", body: ["host_path": hostPath], timeoutSeconds: 60)
     }
 
+    public func listSkills() async throws -> [String: Any] {
+        try await requestJSON(method: "GET", path: "/v1/skills", body: nil, timeoutSeconds: 30)
+    }
+
+    public func installSkills(source: String, ref: String? = nil, subpath: String? = nil, skills: [String] = [], replace: Bool = false) async throws -> [String: Any] {
+        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            throw NousAgentRunnerError.invalidConfig("source is required")
+        }
+        var body: [String: Any] = ["source": trimmed]
+        if let ref, !ref.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body["ref"] = ref
+        }
+        if let subpath, !subpath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body["subpath"] = subpath
+        }
+        if !skills.isEmpty {
+            body["skills"] = skills
+        }
+        if replace {
+            body["replace"] = true
+        }
+        return try await requestJSON(method: "POST", path: "/v1/skills/install", body: body, timeoutSeconds: 1800)
+    }
+
+    public func deleteSkill(name: String) async throws -> [String: Any] {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || !isSafeSkillDirName(trimmed) {
+            throw NousAgentRunnerError.invalidConfig("invalid skill name")
+        }
+        return try await requestJSON(method: "DELETE", path: "/v1/skills/\(trimmed)", body: nil, timeoutSeconds: 60)
+    }
+
     public func pullImage(ref: String) async throws -> [String: Any] {
         try await requestJSON(method: "POST", path: "/v1/images/pull", body: ["ref": ref], timeoutSeconds: 1800)
     }
@@ -263,6 +296,25 @@ private func deriveInstanceIDFromBundleID(_ bundleID: String) -> String {
 }
 
 private func isSafeInstanceID(_ s: String) -> Bool {
+    if s.isEmpty { return false }
+    for scalar in s.unicodeScalars {
+        switch scalar.value {
+        case 0x30...0x39: // 0-9
+            continue
+        case 0x41...0x5A: // A-Z
+            continue
+        case 0x61...0x7A: // a-z
+            continue
+        case 0x2D, 0x2E, 0x5F: // - . _
+            continue
+        default:
+            return false
+        }
+    }
+    return true
+}
+
+private func isSafeSkillDirName(_ s: String) -> Bool {
     if s.isEmpty { return false }
     for scalar in s.unicodeScalars {
         switch scalar.value {
