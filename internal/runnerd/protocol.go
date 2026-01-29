@@ -2,7 +2,7 @@ package runnerd
 
 const (
 	protocolVersionASP  = "0.2.0"
-	protocolVersionASMP = "0.2.0"
+	protocolVersionASMP = "0.3.0"
 )
 
 func (s *Server) protocolCapabilityFlags() map[string]any {
@@ -11,6 +11,7 @@ func (s *Server) protocolCapabilityFlags() map[string]any {
 		"error_fatal_field":          true,
 		"invalid_input_returns_done": true,
 		"service_idle_timeout":       true,
+		"skills_install":             true,
 	}
 }
 

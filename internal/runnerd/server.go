@@ -16,6 +16,7 @@ type Server struct {
 	cfg Config
 
 	mu                 sync.Mutex
+	skillsMu           sync.Mutex
 	shares             []shareEntry
 	services           map[string]Service
 	tunnels            map[string]*tunnelEntry

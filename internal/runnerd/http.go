@@ -37,6 +37,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/forwards", s.withAuth(s.handleForwardsCreate))
 	mux.HandleFunc("DELETE /v1/forwards/{forward_id}", s.withAuth(s.handleForwardsDelete))
 
+	mux.HandleFunc("GET /v1/skills", s.withAuth(s.handleSkillsList))
+	mux.HandleFunc("POST /v1/skills/install", s.withAuth(s.handleSkillsInstall))
+	mux.HandleFunc("DELETE /v1/skills/{skill_name}", s.withAuth(s.handleSkillsDelete))
+
 	mux.HandleFunc("POST /v1/browser/runtime/ensure", s.withAuth(s.handleBrowserRuntimeEnsure))
 	mux.HandleFunc("POST /v1/browser/sessions/{session}/command", s.withAuth(s.handleBrowserCommand))
 
