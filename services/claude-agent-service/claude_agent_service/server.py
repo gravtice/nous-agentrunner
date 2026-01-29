@@ -30,6 +30,19 @@ from claude_agent_sdk.types import (
     UserMessage,
 )
 
+DEFAULT_ALLOWED_TOOLS_ALL = [
+    "AskUserQuestion",
+    "Bash",
+    "Edit",
+    "Glob",
+    "Grep",
+    "Skill",
+    "MultiEdit",
+    "Read",
+    "WebFetch",
+    "Write",
+]
+
 
 def _env_int(name: str, default: int) -> int:
     v = os.getenv(name)
@@ -91,6 +104,62 @@ def _normalize_string_list(v: Any, field: str) -> list[str]:
         if s:
             out.append(s)
     return out
+
+
+def _mcp_server_names_from_config(v: Any) -> list[str]:
+    cfg: dict[str, Any]
+    if isinstance(v, dict):
+        cfg = v
+    elif isinstance(v, str):
+        raw = v.strip()
+        if raw == "":
+            return []
+        if raw.startswith("{"):
+            try:
+                obj = json.loads(raw)
+            except Exception:
+                return []
+            if not isinstance(obj, dict):
+                return []
+            cfg = obj
+        else:
+            try:
+                raw = Path(raw).read_text(encoding="utf-8").strip()
+                obj = json.loads(raw)
+            except Exception:
+                return []
+            if not isinstance(obj, dict):
+                return []
+            cfg = obj
+    else:
+        return []
+
+    servers = cfg.get("mcpServers")
+    if isinstance(servers, dict):
+        cfg = servers
+
+    out: list[str] = []
+    for k in cfg.keys():
+        if isinstance(k, str):
+            name = k.strip()
+            if name:
+                out.append(name)
+    out.sort()
+    return out
+
+
+def _expand_allowed_tools_all(cfg: dict[str, Any]) -> None:
+    raw = cfg.get("allowed_tools")
+    if not isinstance(raw, list):
+        return
+    allowed = [t.strip() for t in raw if isinstance(t, str) and t.strip()]
+    if allowed != ["*"]:
+        return
+
+    tools = set(DEFAULT_ALLOWED_TOOLS_ALL)
+    for server_name in _mcp_server_names_from_config(cfg.get("mcp_servers")):
+        tools.add(f"mcp__{server_name}__*")
+    cfg["allowed_tools"] = sorted(tools)
 
 
 def _looks_like_glob(pattern: str) -> bool:
@@ -189,6 +258,7 @@ def _normalize_options(cfg: dict[str, Any], share_dirs: list[str]) -> ClaudeAgen
     cfg = dict(cfg)
     cfg.setdefault("include_partial_messages", True)
     cfg.setdefault("permission_mode", "bypassPermissions")
+    _expand_allowed_tools_all(cfg)
     _normalize_setting_sources(cfg)
     if "allowed_tools" in cfg:
         cfg["allowed_tools"] = _normalize_string_list(cfg.get("allowed_tools"), "allowed_tools")
