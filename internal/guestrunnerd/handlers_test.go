@@ -256,8 +256,11 @@ func TestM2_HandleServiceCreate_MountsSkillsDir(t *testing.T) {
 		t.Fatalf("read nerdctl log: %v", err)
 	}
 	log := string(logBytes)
-	if !strings.Contains(log, "--mount type=bind,src="+skillsDir+",dst=/tmp/.claude/skills,rw") {
+	if !strings.Contains(log, "--mount type=bind,src="+skillsDir+",dst=/tmp/.nous-skills,rw") {
 		t.Fatalf("expected skills dir bind mount in log, got:\n%s", log)
+	}
+	if !strings.Contains(log, "sh -lc ") || !strings.Contains(log, "ln -s /tmp/.nous-skills /tmp/.claude/skills") {
+		t.Fatalf("expected skills symlink bootstrap in log, got:\n%s", log)
 	}
 	if strings.Contains(log, "NOUS_SKILLS_DIR=") {
 		t.Fatalf("did not expect NOUS_SKILLS_DIR env in log, got:\n%s", log)

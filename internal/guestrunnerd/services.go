@@ -172,6 +172,7 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 	}
 
 	skillsDir := strings.TrimSpace(req.SkillsDir)
+	skillsMount := ""
 
 	if req.Resources.CPUCores > 0 {
 		args = append(args, "--cpus", fmt.Sprintf("%d", req.Resources.CPUCores))
@@ -198,11 +199,18 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 		args = append(args, "--mount", fmt.Sprintf("type=bind,src=%s,dst=%s,rw", p, p))
 	}
 	if req.Type == "claude" && skillsDir != "" {
-		// Bind-mount skills into Claude's HOME so multiple service containers share the same skills and can write updates.
-		args = append(args, "--mount", fmt.Sprintf("type=bind,src=%s,dst=/tmp/.claude/skills,rw", skillsDir))
+		// Bind-mount skills into a stable location and symlink into Claude's HOME.
+		//
+		// Don't mount directly into $HOME/.claude/skills: some runtimes create the mountpoint (and parents)
+		// as root-owned, which can break Claude Code when it tries to write under $HOME/.claude.
+		skillsMount = "/tmp/.nous-skills"
+		args = append(args, "--mount", fmt.Sprintf("type=bind,src=%s,dst=%s,rw", skillsDir, skillsMount))
 	}
 
 	args = append(args, req.ImageRef)
+	if req.Type == "claude" && skillsMount != "" {
+		args = append(args, "sh", "-lc", "set -eu; mkdir -p /tmp/.claude; rm -rf /tmp/.claude/skills; ln -s "+skillsMount+" /tmp/.claude/skills; exec claude-agent-service")
+	}
 	// Ensure idempotency if caller retries.
 	_, _ = runNerdctl(ctx, "rm", "-f", containerName)
 	_, err := runNerdctl(ctx, args...)
