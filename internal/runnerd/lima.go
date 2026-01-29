@@ -267,16 +267,23 @@ func (s *Server) runLimactl(ctx context.Context, args ...string) ([]byte, error)
 		}
 		stderrLog.Flush()
 
-		msg := strings.TrimSpace(stderr.String())
+		outStr := strings.TrimSpace(stdout.String())
+		errStr := strings.TrimSpace(stderr.String())
+		msg := errStr
+		if msg == "" {
+			msg = outStr
+		} else if outStr != "" && outStr != msg {
+			msg = msg + "\n" + outStr
+		}
 		if msg == "" {
 			msg = err.Error()
 		}
 		if strings.Contains(msg, "com.apple.security.virtualization") {
 			log.Printf("limactl %v: missing com.apple.security.virtualization entitlement", args)
-			return nil, fmt.Errorf("missing com.apple.security.virtualization entitlement (codesign limactl with vz entitlements)")
+			return stdout.Bytes(), fmt.Errorf("missing com.apple.security.virtualization entitlement (codesign limactl with vz entitlements)")
 		}
 		log.Printf("limactl %v: error after %s: %s", args, time.Since(start).Truncate(time.Millisecond), msg)
-		return nil, fmt.Errorf("limactl %v: %s", args, msg)
+		return stdout.Bytes(), fmt.Errorf("limactl %v: %s", args, msg)
 	}
 	if stillDone != nil {
 		close(stillDone)

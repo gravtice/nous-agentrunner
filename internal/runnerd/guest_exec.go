@@ -11,8 +11,5 @@ func (s *Server) runInGuestOutput(ctx context.Context, script string) (string, e
 		return "", nil
 	}
 	out, err := s.runLimactl(ctx, "shell", s.cfg.LimaInstanceName, "--", "bash", "-lc", script)
-	if err != nil {
-		return "", err
-	}
-	return string(out), nil
+	return string(out), err
 }

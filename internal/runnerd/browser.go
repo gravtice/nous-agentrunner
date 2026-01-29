@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const agentBrowserVersion = "0.8.2"
@@ -81,6 +82,35 @@ func (s *Server) handleBrowserCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Keep this API narrow: only allow `set viewport <w> <h>`.
+	if cmdName == "set" {
+		if len(req.Args) != 4 {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "set viewport requires width and height", nil)
+			return
+		}
+		if strings.TrimSpace(req.Args[1]) != "viewport" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "set command not allowed", map[string]any{"subcommand": req.Args[1]})
+			return
+		}
+		wStr := strings.TrimSpace(req.Args[2])
+		hStr := strings.TrimSpace(req.Args[3])
+		wInt, err := strconv.Atoi(wStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid viewport width", nil)
+			return
+		}
+		hInt, err := strconv.Atoi(hStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid viewport height", nil)
+			return
+		}
+		if wInt < 1 || hInt < 1 || wInt > 4096 || hInt > 4096 {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "viewport must be 1..4096", map[string]any{"width": wInt, "height": hInt})
+			return
+		}
+		req.Args = []string{"set", "viewport", strconv.Itoa(wInt), strconv.Itoa(hInt)}
+	}
+
 	if _, err := s.ensureGuestReady(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "GUEST_UNAVAILABLE", err.Error(), nil)
 		return
@@ -90,7 +120,9 @@ func (s *Server) handleBrowserCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.agentBrowserMu.Lock()
 	out, err := s.runAgentBrowserInGuest(r.Context(), session, req.Args, req.StreamPort)
+	s.agentBrowserMu.Unlock()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BROWSER_ERROR", err.Error(), nil)
 		return
@@ -100,7 +132,7 @@ func (s *Server) handleBrowserCommand(w http.ResponseWriter, r *http.Request) {
 
 func isAllowedAgentBrowserCommand(cmd string) bool {
 	switch cmd {
-	case "open", "snapshot", "click", "fill", "press", "eval", "screenshot", "close", "get", "back", "forward", "reload":
+	case "open", "snapshot", "click", "fill", "press", "eval", "screenshot", "close", "get", "back", "forward", "reload", "set":
 		return true
 	default:
 		return false
@@ -165,11 +197,14 @@ func (s *Server) ensureAgentBrowserRuntimeInGuest(ctx context.Context, version s
 		fmt.Sprintf("SOCKET_DIR=%s", bashQuote(agentBrowserGuestSockets)),
 		fmt.Sprintf("BROWSERS_DIR=%s", bashQuote(agentBrowserPlaywrightBrowsers)),
 		fmt.Sprintf("RUNTIME_PACK=%s", bashQuote(packPath)),
-		`if [ -f "$READY" ]; then exit 0; fi`,
 		`user="$(id -un)"`,
 		`group="$(id -gn)"`,
-		`sudo -n mkdir -p "$ROOT" "$SOCKET_DIR" "$BROWSERS_DIR"`,
-		`sudo -n chown -R "$user:$group" "$ROOT" "$SOCKET_DIR" "$BROWSERS_DIR"`,
+		// /var/run is tmpfs (cleared on VM restart); always ensure the socket dir exists and is writable.
+		`sudo -n mkdir -p "$SOCKET_DIR"`,
+		`sudo -n chown -R "$user:$group" "$SOCKET_DIR"`,
+		`if [ -f "$READY" ]; then exit 0; fi`,
+		`sudo -n mkdir -p "$ROOT" "$BROWSERS_DIR"`,
+		`sudo -n chown -R "$user:$group" "$ROOT" "$BROWSERS_DIR"`,
 		`sudo -n mkdir -p "$NODE_DIR"`,
 		`sudo -n chown -R "$user:$group" "$NODE_DIR"`,
 		// Offline runtime pack shortcut (optional).
@@ -309,15 +344,79 @@ func (s *Server) runAgentBrowserInGuest(ctx context.Context, session string, arg
 		fmt.Sprintf("%s %s --session %s --json", bashQuote(exe), strings.Join(quotedArgs, " "), bashQuote(session)),
 	}, "\n")
 
-	out, err := s.runInGuestOutput(ctx, cmd)
-	if err != nil {
-		return nil, err
+	deadline := time.Now().Add(30 * time.Second)
+
+	for {
+		out, err := s.runInGuestOutput(ctx, cmd)
+		raw := strings.TrimSpace(out)
+
+		if raw != "" {
+			var v map[string]any
+			if jerr := json.Unmarshal([]byte(raw), &v); jerr == nil {
+				// agent-browser sometimes needs extra time to start its background daemon on cold start.
+				if isAgentBrowserDaemonStartFailure(v) && time.Now().Before(deadline) {
+					// The daemon can get wedged with a stale process holding the stream port.
+					// Best-effort: kill any agent-browser daemon process listening on that port and retry.
+					_ = s.cleanupAgentBrowserStreamPortInGuest(ctx, session, streamPort)
+					select {
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					case <-time.After(500 * time.Millisecond):
+					}
+					continue
+				}
+				return v, nil
+			}
+		}
+
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("invalid agent-browser json")
+	}
+}
+
+func isAgentBrowserDaemonStartFailure(v map[string]any) bool {
+	success, ok := v["success"].(bool)
+	if !ok || success {
+		return false
+	}
+	msg, _ := v["error"].(string)
+	return strings.Contains(msg, "Daemon failed to start")
+}
+
+func (s *Server) cleanupAgentBrowserStreamPortInGuest(ctx context.Context, session string, streamPort int) error {
+	if streamPort <= 0 || streamPort > 65535 {
+		return nil
+	}
+	if session == "" || !isSafeToken(session) {
+		return nil
 	}
 
-	raw := strings.TrimSpace(out)
-	var v map[string]any
-	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		return nil, fmt.Errorf("invalid agent-browser json: %w", err)
-	}
-	return v, nil
+	script := strings.Join([]string{
+		"set -euo pipefail",
+		fmt.Sprintf("PORT=%s", bashQuote(strconv.Itoa(streamPort))),
+		fmt.Sprintf("SOCKET_DIR=%s", bashQuote(agentBrowserGuestSockets)),
+		fmt.Sprintf("SESSION=%s", bashQuote(session)),
+		// Clear stale socket markers for this session; a healthy run will recreate them.
+		`rm -f "$SOCKET_DIR/$SESSION.sock" "$SOCKET_DIR/$SESSION.pid" "$SOCKET_DIR/$SESSION.stream" || true`,
+		// Find any listener on the stream port.
+		`pids=""`,
+		`if command -v ss >/dev/null 2>&1; then`,
+		// ss output includes pid=1234, but mawk doesn't support match() capture arrays.
+		`  pids="$(ss -ltnp 2>/dev/null | awk -v p=":$PORT" '$4 ~ p { if (match($0,/pid=[0-9]+/)) print substr($0,RSTART+4,RLENGTH-4) }')"`,
+		`elif command -v netstat >/dev/null 2>&1; then`,
+		`  pids="$(netstat -ltnp 2>/dev/null | awk -v p=":$PORT" '$4 ~ p { if (match($0,/\\/[0-9]+/)) print substr($0,RSTART+1,RLENGTH-1) }')"`,
+		`fi`,
+		`for pid in $pids; do`,
+		`  [ -n "$pid" ] || continue`,
+		`  cmdline="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"`,
+		`  case "$cmdline" in`,
+		`    *agent-browser*daemon.js*) kill -9 "$pid" 2>/dev/null || true ;;`,
+		`  esac`,
+		`done`,
+	}, "\n")
+
+	_, err := s.runInGuestOutput(ctx, script)
+	return err
 }

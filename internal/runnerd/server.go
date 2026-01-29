@@ -17,6 +17,7 @@ type Server struct {
 
 	mu                 sync.Mutex
 	skillsMu           sync.Mutex
+	agentBrowserMu     sync.Mutex
 	shares             []shareEntry
 	services           map[string]Service
 	tunnels            map[string]*tunnelEntry
