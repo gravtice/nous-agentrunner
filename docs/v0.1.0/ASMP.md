@@ -304,9 +304,11 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 - `permission_mode` 仅控制 Claude Code 的交互确认模式（`bypassPermissions/acceptEdits/...`），不会自动放开 MCP。
 - MCP 工具默认不对模型暴露：要启用 MCP，必须在 `service_config.allowed_tools` 中显式允许对应 `mcp__...` 工具名（支持 glob）。
 - `allowed_tools` 字段一旦存在，即视为启用 allowlist：只有命中的工具才允许调用（内置工具 + MCP 工具都会受影响）。
-  - 想“全开”内置工具：先调用 `GET /v1/services/types/claude/builtin_tools` 获取列表，再把返回的 `builtin_tools` 全量写入 `allowed_tools`。
+  - **快捷方式（推荐）**：`allowed_tools: ["*"]` 表示“全开工具”。Runner 会透传该值，`claude-agent-service` 会将其展开为：
+    - 全量内置工具（等价于 `GET /v1/services/types/claude/builtin_tools` 返回的工具集合）
+    - `mcp_servers` 中每个 server 的 `mcp__<server>__*`
+  - 想“全开”内置工具（不使用快捷方式）：先调用 `GET /v1/services/types/claude/builtin_tools` 获取列表，再把返回的 `builtin_tools` 全量写入 `allowed_tools`。
   - 想“全开”某个 MCP server 的工具：追加 `mcp__<server>__*`（例如 `mcp__playwright__*`）。
-  - 想“全开”所有 MCP 工具：追加 `mcp__*`。
   - `allowed_tools: []` 等价于“启用 allowlist 但不放行任何工具”（内置与 MCP 都会被禁用），一般不要这么配。
 - `disallowed_tools` 用于显式禁用（优先级高于 `allowed_tools`），同样支持 glob。
 
@@ -325,7 +327,7 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
   - key 仅允许字母/数字/下划线（且不允许数字开头），数量与 value 大小有上限
 - `service_config`：
   - 透传给容器内服务；对 `type="claude"`，会被解释为 Python Claude Agent SDK 的 `ClaudeAgentOptions`
-  - `mcp_servers`：仅支持 dict（上游直接组装 MCP servers 配置）
+  - `mcp_servers`：支持 dict 或 string（string 作为文件路径，需位于 Share 白名单下）
   - `permission_mode` 可在会话中通过 ASP `permission_mode.set` 动态切换
 
 返回：
