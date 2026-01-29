@@ -267,7 +267,14 @@ func materializeDiscoveredSkills(root string, dirs []string) ([]discoveredSkill,
 		if !isSafeSkillDirName(installName) || strings.HasPrefix(installName, ".") || installName == "__MACOSX" {
 			continue
 		}
-		out = append(out, discoveredSkill{InstallName: installName, AbsPath: d, RelPath: rel})
+		meta := readSkillMDMeta(filepath.Join(d, "SKILL.md"))
+		out = append(out, discoveredSkill{
+			InstallName: installName,
+			AbsPath:     d,
+			RelPath:     rel,
+			Name:        meta.Name,
+			Description: meta.Description,
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].InstallName) < strings.ToLower(out[j].InstallName) })
 	return out, nil

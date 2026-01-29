@@ -78,7 +78,7 @@ func TestDiscoverSkillDirs_PriorityAndFallback(t *testing.T) {
 func TestSkillsInstall_List_Delete(t *testing.T) {
 	appSupport := t.TempDir()
 	source := t.TempDir()
-	mustWriteFile(t, filepath.Join(source, "skills", "foo", "SKILL.md"), "# foo\n")
+	mustWriteFile(t, filepath.Join(source, "skills", "foo", "SKILL.md"), "---\nname: foo-skill\ndescription: Foo desc\n---\n\n# Foo\n")
 
 	canon, err := canonicalizeExistingPath(source)
 	if err != nil {
@@ -103,8 +103,38 @@ func TestSkillsInstall_List_Delete(t *testing.T) {
 	}
 	h := s.Handler()
 
-	t.Run("install ok", func(t *testing.T) {
+	t.Run("discover includes metadata", func(t *testing.T) {
 		body := mustMarshalJSON(t, map[string]any{"source": source})
+		req := httptest.NewRequest(http.MethodPost, "/v1/skills/discover", bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer tok")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 200 {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		var out struct {
+			Skills []struct {
+				InstallName string `json:"install_name"`
+				Name        string `json:"name"`
+				Description string `json:"description"`
+			} `json:"skills"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if len(out.Skills) != 1 {
+			t.Fatalf("skills=%v", out.Skills)
+		}
+		if out.Skills[0].InstallName != "foo" {
+			t.Fatalf("install_name=%q", out.Skills[0].InstallName)
+		}
+		if out.Skills[0].Name != "foo-skill" || out.Skills[0].Description != "Foo desc" {
+			t.Fatalf("name=%q description=%q", out.Skills[0].Name, out.Skills[0].Description)
+		}
+	})
+
+	t.Run("install ok", func(t *testing.T) {
+		body := mustMarshalJSON(t, map[string]any{"source": source, "skills": []string{"foo"}})
 		req := httptest.NewRequest(http.MethodPost, "/v1/skills/install", bytes.NewReader(body))
 		req.Header.Set("Authorization", "Bearer tok")
 		rec := httptest.NewRecorder()
@@ -121,7 +151,7 @@ func TestSkillsInstall_List_Delete(t *testing.T) {
 	})
 
 	t.Run("install conflict", func(t *testing.T) {
-		body := mustMarshalJSON(t, map[string]any{"source": source})
+		body := mustMarshalJSON(t, map[string]any{"source": source, "skills": []string{"foo"}})
 		req := httptest.NewRequest(http.MethodPost, "/v1/skills/install", bytes.NewReader(body))
 		req.Header.Set("Authorization", "Bearer tok")
 		rec := httptest.NewRecorder()

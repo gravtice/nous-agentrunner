@@ -39,6 +39,19 @@ type skillsInstallRequest struct {
 	Replace bool     `json:"replace,omitempty"`
 }
 
+type skillsDiscoverRequest struct {
+	Source  string `json:"source"`
+	Ref     string `json:"ref,omitempty"`
+	Subpath string `json:"subpath,omitempty"`
+}
+
+type skillDiscoveredItem struct {
+	InstallName string `json:"install_name"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	SkillPath   string `json:"skill_path,omitempty"`
+}
+
 func (s *Server) skillsDir() string {
 	return filepath.Join(s.cfg.Paths.AppSupportDir, "skills")
 }
@@ -78,6 +91,47 @@ func (s *Server) handleSkillsList(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	writeJSON(w, 200, map[string]any{"skills": out})
+}
+
+func (s *Server) handleSkillsDiscover(w http.ResponseWriter, r *http.Request) {
+	var req skillsDiscoverRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid json", nil)
+		return
+	}
+	req.Source = strings.TrimSpace(req.Source)
+	req.Ref = strings.TrimSpace(req.Ref)
+	req.Subpath = strings.TrimSpace(req.Subpath)
+	if req.Source == "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "source is required", nil)
+		return
+	}
+
+	skills, commit, err := s.discoverSkills(r.Context(), req)
+	if err != nil {
+		var httpErr *skillHTTPError
+		if errors.As(err, &httpErr) {
+			writeError(w, httpErr.Status, httpErr.Code, httpErr.Message, httpErr.Details)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "SKILL_DISCOVER_FAILED", err.Error(), nil)
+		return
+	}
+
+	out := make([]skillDiscoveredItem, 0, len(skills))
+	for _, s := range skills {
+		out = append(out, skillDiscoveredItem{
+			InstallName: s.InstallName,
+			Name:        s.Name,
+			Description: s.Description,
+			SkillPath:   s.RelPath,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].InstallName) < strings.ToLower(out[j].InstallName) })
+	writeJSON(w, 200, map[string]any{
+		"skills": out,
+		"commit": commit,
+	})
 }
 
 func (s *Server) handleSkillsInstall(w http.ResponseWriter, r *http.Request) {
@@ -169,86 +223,137 @@ func skillPathNotAllowed(msg string, details any) error {
 	return &skillHTTPError{Status: http.StatusBadRequest, Code: "PATH_NOT_ALLOWED", Message: msg, Details: details}
 }
 
+type resolvedSkillSource struct {
+	Parsed  parsedSkillSource
+	RepoDir string
+	Commit  string
+	Cleanup func()
+}
+
+func (s *Server) resolveSkillSource(ctx context.Context, source, ref, subpath string) (resolvedSkillSource, error) {
+	parsed, err := parseSkillSource(source)
+	if err != nil {
+		return resolvedSkillSource{}, skillBadRequest(err.Error(), nil)
+	}
+	if strings.TrimSpace(ref) != "" {
+		parsed.Ref = strings.TrimSpace(ref)
+	}
+	if strings.TrimSpace(subpath) != "" {
+		parsed.Subpath = strings.TrimSpace(subpath)
+	}
+
+	switch parsed.Type {
+	case "local":
+		if parsed.LocalPath == "" || !filepath.IsAbs(parsed.LocalPath) {
+			return resolvedSkillSource{}, skillBadRequest("local source must be an absolute path", nil)
+		}
+		if _, _, ok := s.validateAllowedPath(parsed.LocalPath); !ok {
+			return resolvedSkillSource{}, skillPathNotAllowed("local source is not under any shared directory", nil)
+		}
+		fi, err := os.Stat(parsed.LocalPath)
+		if err != nil {
+			return resolvedSkillSource{}, skillBadRequest("local source path not accessible", map[string]any{"error": err.Error()})
+		}
+		if !fi.IsDir() {
+			return resolvedSkillSource{}, skillBadRequest("local source must be a directory", nil)
+		}
+		return resolvedSkillSource{
+			Parsed:  parsed,
+			RepoDir: parsed.LocalPath,
+			Commit:  "",
+			Cleanup: func() {},
+		}, nil
+	case "github", "gitlab", "git":
+		repoDir, cleanupDir, commit, err := s.cloneSkillRepo(ctx, parsed.URL, parsed.Ref)
+		if err != nil {
+			return resolvedSkillSource{}, err
+		}
+		return resolvedSkillSource{
+			Parsed:  parsed,
+			RepoDir: repoDir,
+			Commit:  commit,
+			Cleanup: func() { _ = os.RemoveAll(cleanupDir) },
+		}, nil
+	default:
+		return resolvedSkillSource{}, skillBadRequest("unsupported source type", map[string]any{"type": parsed.Type})
+	}
+}
+
+func (s *Server) discoverSkills(ctx context.Context, req skillsDiscoverRequest) ([]discoveredSkill, string, error) {
+	start := time.Now()
+	log.Printf("skills.discover: start source=%q ref=%q subpath=%q", req.Source, req.Ref, req.Subpath)
+	defer func() { log.Printf("skills.discover: done (%s)", time.Since(start).Truncate(time.Millisecond)) }()
+
+	resolved, err := s.resolveSkillSource(ctx, req.Source, req.Ref, req.Subpath)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resolved.Cleanup()
+
+	discovered, err := discoverSkillDirs(resolved.RepoDir, resolved.Parsed.Subpath)
+	if err != nil {
+		return nil, resolved.Commit, skillBadRequest("failed to discover skills", map[string]any{"error": err.Error()})
+	}
+	if len(discovered) == 0 {
+		return nil, resolved.Commit, &skillHTTPError{
+			Status:  http.StatusNotFound,
+			Code:    "SKILLS_NOT_FOUND",
+			Message: "no skills found",
+			Details: map[string]any{"source": req.Source, "subpath": resolved.Parsed.Subpath},
+		}
+	}
+	if resolved.Parsed.SkillFilter != "" {
+		selected, err := selectSkills(discovered, []string{resolved.Parsed.SkillFilter})
+		if err != nil {
+			return nil, resolved.Commit, skillBadRequest(err.Error(), map[string]any{"available": discoveredInstallNames(discovered)})
+		}
+		return selected, resolved.Commit, nil
+	}
+
+	return discovered, resolved.Commit, nil
+}
+
 func (s *Server) installSkills(ctx context.Context, req skillsInstallRequest) ([]string, string, error) {
 	start := time.Now()
 	log.Printf("skills.install: start source=%q ref=%q subpath=%q skills=%d replace=%v", req.Source, req.Ref, req.Subpath, len(req.Skills), req.Replace)
 	defer func() { log.Printf("skills.install: done (%s)", time.Since(start).Truncate(time.Millisecond)) }()
+
+	resolved, err := s.resolveSkillSource(ctx, req.Source, req.Ref, req.Subpath)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resolved.Cleanup()
+
+	wanted := compactStringList(req.Skills)
+	if resolved.Parsed.SkillFilter != "" {
+		wanted = append(wanted, resolved.Parsed.SkillFilter)
+		wanted = compactStringList(wanted)
+	}
+
+	discovered, err := discoverSkillDirs(resolved.RepoDir, resolved.Parsed.Subpath)
+	if err != nil {
+		return nil, resolved.Commit, skillBadRequest("failed to discover skills", map[string]any{"error": err.Error()})
+	}
+	if len(discovered) == 0 {
+		return nil, resolved.Commit, &skillHTTPError{
+			Status:  http.StatusNotFound,
+			Code:    "SKILLS_NOT_FOUND",
+			Message: "no skills found",
+			Details: map[string]any{"source": req.Source, "subpath": resolved.Parsed.Subpath},
+		}
+	}
+
+	selected, err := selectSkills(discovered, wanted)
+	if err != nil {
+		return nil, resolved.Commit, skillBadRequest(err.Error(), map[string]any{"available": discoveredInstallNames(discovered)})
+	}
 
 	s.skillsMu.Lock()
 	defer s.skillsMu.Unlock()
 
 	skillsDir := s.skillsDir()
 	if err := os.MkdirAll(skillsDir, 0o700); err != nil {
-		return nil, "", err
-	}
-
-	parsed, err := parseSkillSource(req.Source)
-	if err != nil {
-		return nil, "", skillBadRequest(err.Error(), nil)
-	}
-	if req.Ref != "" {
-		parsed.Ref = req.Ref
-	}
-	if req.Subpath != "" {
-		parsed.Subpath = req.Subpath
-	}
-	if parsed.SkillFilter != "" {
-		req.Skills = append(req.Skills, parsed.SkillFilter)
-	}
-	req.Skills = compactStringList(req.Skills)
-
-	var (
-		repoDir    string
-		cleanupDir string
-		commit     string
-	)
-	switch parsed.Type {
-	case "local":
-		if parsed.LocalPath == "" || !filepath.IsAbs(parsed.LocalPath) {
-			return nil, "", skillBadRequest("local source must be an absolute path", nil)
-		}
-		if _, _, ok := s.validateAllowedPath(parsed.LocalPath); !ok {
-			return nil, "", skillPathNotAllowed("local source is not under any shared directory", nil)
-		}
-		fi, err := os.Stat(parsed.LocalPath)
-		if err != nil {
-			return nil, "", skillBadRequest("local source path not accessible", map[string]any{"error": err.Error()})
-		}
-		if !fi.IsDir() {
-			return nil, "", skillBadRequest("local source must be a directory", nil)
-		}
-		repoDir = parsed.LocalPath
-	case "github", "gitlab", "git":
-		var err error
-		repoDir, cleanupDir, commit, err = s.cloneSkillRepo(ctx, parsed.URL, parsed.Ref)
-		if err != nil {
-			return nil, "", err
-		}
-		defer func() {
-			if cleanupDir != "" {
-				_ = os.RemoveAll(cleanupDir)
-			}
-		}()
-	default:
-		return nil, "", skillBadRequest("unsupported source type", map[string]any{"type": parsed.Type})
-	}
-
-	discovered, err := discoverSkillDirs(repoDir, parsed.Subpath)
-	if err != nil {
-		return nil, "", skillBadRequest("failed to discover skills", map[string]any{"error": err.Error()})
-	}
-	if len(discovered) == 0 {
-		return nil, commit, &skillHTTPError{
-			Status:  http.StatusNotFound,
-			Code:    "SKILLS_NOT_FOUND",
-			Message: "no skills found",
-			Details: map[string]any{"source": req.Source, "subpath": parsed.Subpath},
-		}
-	}
-
-	selected, err := selectSkills(discovered, req.Skills)
-	if err != nil {
-		return nil, commit, skillBadRequest(err.Error(), map[string]any{"available": discoveredInstallNames(discovered)})
+		return nil, resolved.Commit, err
 	}
 
 	if !req.Replace {
@@ -261,12 +366,12 @@ func (s *Server) installSkills(ctx context.Context, req skillsInstallRequest) ([
 				continue
 			}
 			if !errors.Is(err, os.ErrNotExist) {
-				return nil, commit, err
+				return nil, resolved.Commit, err
 			}
 		}
 		if len(conflicts) > 0 {
 			sort.Slice(conflicts, func(i, j int) bool { return strings.ToLower(conflicts[i]) < strings.ToLower(conflicts[j]) })
-			return nil, commit, &skillHTTPError{
+			return nil, resolved.Commit, &skillHTTPError{
 				Status:  http.StatusConflict,
 				Code:    "SKILL_EXISTS",
 				Message: "skill already exists",
@@ -281,29 +386,29 @@ func (s *Server) installSkills(ctx context.Context, req skillsInstallRequest) ([
 		name := skill.InstallName
 		dst := filepath.Join(skillsDir, name)
 		if !hasPathPrefix(filepath.Clean(dst), filepath.Clean(skillsDir)) {
-			return nil, commit, fmt.Errorf("invalid install path for skill %q", name)
+			return nil, resolved.Commit, fmt.Errorf("invalid install path for skill %q", name)
 		}
 
 		srcInfo := skillSourceInfo{
 			Source:      req.Source,
-			URL:         parsed.URL,
-			Ref:         parsed.Ref,
-			Subpath:     parsed.Subpath,
-			Commit:      commit,
+			URL:         resolved.Parsed.URL,
+			Ref:         resolved.Parsed.Ref,
+			Subpath:     resolved.Parsed.Subpath,
+			Commit:      resolved.Commit,
 			SkillPath:   skill.RelPath,
 			InstalledAt: nowISO8601(),
 		}
 		if err := installSkillDir(src, dst, srcInfo, req.Replace); err != nil {
 			var httpErr *skillHTTPError
 			if errors.As(err, &httpErr) {
-				return nil, commit, httpErr
+				return nil, resolved.Commit, httpErr
 			}
-			return nil, commit, err
+			return nil, resolved.Commit, err
 		}
 		installed = append(installed, name)
 	}
 	sort.Slice(installed, func(i, j int) bool { return strings.ToLower(installed[i]) < strings.ToLower(installed[j]) })
-	return installed, commit, nil
+	return installed, resolved.Commit, nil
 }
 
 func compactStringList(in []string) []string {
@@ -356,6 +461,8 @@ type discoveredSkill struct {
 	InstallName string
 	AbsPath     string
 	RelPath     string
+	Name        string
+	Description string
 }
 
 func discoveredInstallNames(in []discoveredSkill) []string {
@@ -371,17 +478,37 @@ func selectSkills(all []discoveredSkill, wanted []string) ([]discoveredSkill, er
 	if len(wanted) == 0 {
 		return all, nil
 	}
-	byName := make(map[string]discoveredSkill, len(all))
-	for _, s := range all {
-		byName[strings.ToLower(s.InstallName)] = s
+
+	byKey := make(map[string]discoveredSkill, len(all)*2)
+	ambiguous := make(map[string]bool)
+	addKey := func(key string, s discoveredSkill) {
+		key = strings.ToLower(strings.TrimSpace(key))
+		if key == "" {
+			return
+		}
+		if existing, ok := byKey[key]; ok {
+			if strings.ToLower(existing.InstallName) != strings.ToLower(s.InstallName) {
+				ambiguous[key] = true
+			}
+			return
+		}
+		byKey[key] = s
 	}
+	for _, s := range all {
+		addKey(s.InstallName, s)
+		addKey(s.Name, s)
+	}
+	for k := range ambiguous {
+		delete(byKey, k)
+	}
+
 	var out []discoveredSkill
 	var missing []string
 	for _, w := range wanted {
 		if w == "" {
 			continue
 		}
-		s, ok := byName[strings.ToLower(w)]
+		s, ok := byKey[strings.ToLower(w)]
 		if !ok {
 			missing = append(missing, w)
 			continue
