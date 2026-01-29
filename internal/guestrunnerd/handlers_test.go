@@ -198,7 +198,7 @@ func TestM2_HandleServiceCreate_BuildsMounts(t *testing.T) {
 	}
 }
 
-func TestM2_HandleServiceCreate_BootstrapsSkillsBeforeStart(t *testing.T) {
+func TestM2_HandleServiceCreate_MountsSkillsDir(t *testing.T) {
 	binDir := t.TempDir()
 	_ = writeFakeNerdctl(t, binDir)
 
@@ -256,17 +256,14 @@ func TestM2_HandleServiceCreate_BootstrapsSkillsBeforeStart(t *testing.T) {
 		t.Fatalf("read nerdctl log: %v", err)
 	}
 	log := string(logBytes)
-	if !strings.Contains(log, "-e NOUS_SKILLS_DIR="+skillsDir) {
-		t.Fatalf("expected NOUS_SKILLS_DIR env in log, got:\n%s", log)
+	if !strings.Contains(log, "--mount type=bind,src="+skillsDir+",dst=/tmp/.claude/skills,rw") {
+		t.Fatalf("expected skills dir bind mount in log, got:\n%s", log)
 	}
-	if !strings.Contains(log, "sh -lc ") {
-		t.Fatalf("expected sh -lc bootstrap cmd in log, got:\n%s", log)
+	if strings.Contains(log, "NOUS_SKILLS_DIR=") {
+		t.Fatalf("did not expect NOUS_SKILLS_DIR env in log, got:\n%s", log)
 	}
-	if !strings.Contains(log, "mkdir -p /tmp/.claude/skills") {
-		t.Fatalf("expected mkdir in bootstrap cmd, got:\n%s", log)
-	}
-	if !strings.Contains(log, "cp -a") || !strings.Contains(log, "/tmp/.claude/skills/$name") {
-		t.Fatalf("expected cp into /tmp/.claude/skills in bootstrap cmd, got:\n%s", log)
+	if strings.Contains(log, "cp -a") {
+		t.Fatalf("did not expect skills copy in log, got:\n%s", log)
 	}
 }
 

@@ -172,9 +172,6 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 	}
 
 	skillsDir := strings.TrimSpace(req.SkillsDir)
-	if skillsDir != "" && req.Type == "claude" {
-		args = append(args, "-e", fmt.Sprintf("NOUS_SKILLS_DIR=%s", skillsDir))
-	}
 
 	if req.Resources.CPUCores > 0 {
 		args = append(args, "--cpus", fmt.Sprintf("%d", req.Resources.CPUCores))
@@ -200,12 +197,12 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 		}
 		args = append(args, "--mount", fmt.Sprintf("type=bind,src=%s,dst=%s,rw", p, p))
 	}
+	if req.Type == "claude" && skillsDir != "" {
+		// Bind-mount skills into Claude's HOME so multiple service containers share the same skills and can write updates.
+		args = append(args, "--mount", fmt.Sprintf("type=bind,src=%s,dst=/tmp/.claude/skills,rw", skillsDir))
+	}
 
 	args = append(args, req.ImageRef)
-	if req.Type == "claude" && skillsDir != "" {
-		// Claude Code discovers skills only at startup. Copy them into HOME before starting the service.
-		args = append(args, "sh", "-lc", "set -eu; mkdir -p /tmp/.claude/skills; if [ -n \"${NOUS_SKILLS_DIR:-}\" ] && [ -d \"$NOUS_SKILLS_DIR\" ]; then for d in \"$NOUS_SKILLS_DIR\"/*; do [ -d \"$d\" ] || continue; name=\"${d##*/}\"; case \"$name\" in \"\"|.*|__MACOSX|*[!A-Za-z0-9._-]*) continue ;; esac; rm -rf \"/tmp/.claude/skills/$name\"; cp -a \"$d\" \"/tmp/.claude/skills/$name\"; done; fi; exec claude-agent-service")
-	}
 	// Ensure idempotency if caller retries.
 	_, _ = runNerdctl(ctx, "rm", "-f", containerName)
 	_, err := runNerdctl(ctx, args...)
