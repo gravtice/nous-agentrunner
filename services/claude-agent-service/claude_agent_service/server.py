@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import contextlib
+import fnmatch
 import json
 import os
 import shutil
@@ -90,6 +91,30 @@ def _normalize_string_list(v: Any, field: str) -> list[str]:
         if s:
             out.append(s)
     return out
+
+
+def _looks_like_glob(pattern: str) -> bool:
+    return any(c in pattern for c in ("*", "?", "["))
+
+
+def _split_tool_patterns(tools: list[str]) -> tuple[set[str], list[str]]:
+    exact: set[str] = set()
+    patterns: list[str] = []
+    for t in tools:
+        if _looks_like_glob(t):
+            patterns.append(t)
+        else:
+            exact.add(t)
+    return exact, patterns
+
+
+def _matches_any(tool_name: str, exact: set[str], patterns: list[str]) -> bool:
+    if tool_name in exact:
+        return True
+    for pattern in patterns:
+        if fnmatch.fnmatchcase(tool_name, pattern):
+            return True
+    return False
 
 
 def _normalize_setting_sources(cfg: dict[str, Any]) -> None:
@@ -284,8 +309,10 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
         pending_asks: dict[str, asyncio.Future[dict[str, Any]]] = {}
         requested_permission_mode = options.permission_mode or "bypassPermissions"
         current_permission_mode = requested_permission_mode
-        allowed_tools = {t for t in (options.allowed_tools or []) if isinstance(t, str) and t.strip()}
-        disallowed_tools = {t for t in (options.disallowed_tools or []) if isinstance(t, str) and t.strip()}
+        allowed_tools_raw = [t.strip() for t in (options.allowed_tools or []) if isinstance(t, str) and t.strip()]
+        disallowed_tools_raw = [t.strip() for t in (options.disallowed_tools or []) if isinstance(t, str) and t.strip()]
+        allowed_tools, allowed_tool_patterns = _split_tool_patterns(allowed_tools_raw)
+        disallowed_tools, disallowed_tool_patterns = _split_tool_patterns(disallowed_tools_raw)
         enforced_tools = {
             "AskUserQuestion",
             "Bash",
@@ -341,11 +368,11 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
                     ]
                 )
 
-            if tool_name in disallowed_tools:
+            if _matches_any(tool_name, disallowed_tools, disallowed_tool_patterns):
                 return PermissionResultDeny(message=f"tool disallowed: {tool_name}")
             if allowlist_configured:
                 if tool_name.startswith("mcp__") or tool_name in enforced_tools:
-                    if tool_name not in allowed_tools:
+                    if not _matches_any(tool_name, allowed_tools, allowed_tool_patterns):
                         return PermissionResultDeny(message=f"tool not allowed: {tool_name}")
 
             if tool_name != "AskUserQuestion":
