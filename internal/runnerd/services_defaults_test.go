@@ -30,20 +30,15 @@ func TestApplyClaudeServiceConfigDefaults_DoesNotOverrideSettingSources(t *testi
 	}
 }
 
-func TestApplyClaudeServiceConfigDefaults_SetsAllowedToolsWhenMissing(t *testing.T) {
+func TestApplyClaudeServiceConfigDefaults_DoesNotSetAllowedTools(t *testing.T) {
 	cfg := map[string]any{}
 	applyClaudeServiceConfigDefaults(cfg)
-	got, ok := cfg["allowed_tools"].([]string)
-	if !ok {
-		t.Fatalf("allowed_tools type=%T", cfg["allowed_tools"])
-	}
-	want := builtinToolsByServiceType["claude"]
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("allowed_tools=%v", got)
+	if _, ok := cfg["allowed_tools"]; ok {
+		t.Fatalf("allowed_tools unexpectedly set")
 	}
 }
 
-func TestApplyClaudeServiceConfigDefaults_DoesNotOverrideAllowedTools(t *testing.T) {
+func TestApplyClaudeServiceConfigDefaults_PreservesAllowedTools(t *testing.T) {
 	existing := []any{"Read"}
 	cfg := map[string]any{"allowed_tools": existing}
 	applyClaudeServiceConfigDefaults(cfg)

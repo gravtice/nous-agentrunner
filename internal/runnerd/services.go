@@ -37,15 +37,6 @@ func applyClaudeServiceConfigDefaults(cfg map[string]any) {
 	if _, ok := cfg["setting_sources"]; !ok {
 		cfg["setting_sources"] = []string{"user", "project"}
 	}
-	if _, ok := cfg["allowed_tools"]; !ok {
-		if tools, ok := builtinToolsByServiceType["claude"]; ok && len(tools) > 0 {
-			out := make([]string, len(tools))
-			copy(out, tools)
-			cfg["allowed_tools"] = out
-		} else {
-			cfg["allowed_tools"] = []string{"Skill"}
-		}
-	}
 }
 
 func effectiveServiceState(vmState, serviceState string) string {
