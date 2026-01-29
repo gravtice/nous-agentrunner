@@ -160,6 +160,19 @@ struct ContentView: View {
     @State private var statusText = "Not loaded"
     @State private var imageRef = "docker.io/gravtice/nous-claude-agent-service:0.2.1"
 
+    private static let defaultAllowedToolsAll = [
+        "AskUserQuestion",
+        "Bash",
+        "Edit",
+        "Glob",
+        "Grep",
+        "Skill",
+        "MultiEdit",
+        "Read",
+        "WebFetch",
+        "Write",
+    ]
+
     private enum SystemPromptMode: String, CaseIterable, Identifiable {
         case builtin
         case custom
@@ -260,6 +273,31 @@ struct ContentView: View {
             throw NousAgentRunnerError.invalidConfig("json must be an object")
         }
         return dict
+    }
+
+    private func mcpServerNames(from raw: String) -> [String] {
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.isEmpty { return [] }
+
+        let obj: [String: Any]
+        if s.hasPrefix("{") {
+            guard let parsed = try? parseJSONObjectText(s) else { return [] }
+            obj = parsed
+        } else {
+            let url = URL(fileURLWithPath: s)
+            guard let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) else {
+                return []
+            }
+            guard let parsed = try? parseJSONObjectText(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                return []
+            }
+            obj = parsed
+        }
+
+        if let servers = obj["mcpServers"] as? [String: Any] {
+            return servers.keys.sorted()
+        }
+        return obj.keys.sorted()
     }
 
     var body: some View {
@@ -438,7 +476,7 @@ struct ContentView: View {
                                 }
 
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Toggle("all_tools (allowed_tools: [\"*\"])", isOn: $allTools)
+                                    Toggle("all_tools (builtin + MCP)", isOn: $allTools)
                                         .font(.system(.caption, design: .monospaced))
                                     if !allTools {
                                         Toggle("restrict allowed_tools", isOn: $restrictTools)
@@ -881,7 +919,16 @@ struct ContentView: View {
             }
 
             if allTools {
-                serviceConfig["allowed_tools"] = ["*"]
+                var tools = Set(Self.defaultAllowedToolsAll)
+                let mcpNames = mcpServerNames(from: mcpRaw)
+                if !mcpNames.isEmpty {
+                    for name in mcpNames {
+                        tools.insert("mcp__\(name)__*")
+                    }
+                } else if !mcpRaw.isEmpty {
+                    tools.insert("mcp__*__*")
+                }
+                serviceConfig["allowed_tools"] = tools.sorted()
             } else if restrictTools {
                 var tools = Set<String>()
                 for t in allowedTools {
