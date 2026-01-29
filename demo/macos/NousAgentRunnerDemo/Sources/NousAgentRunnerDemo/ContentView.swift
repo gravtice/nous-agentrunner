@@ -201,9 +201,9 @@ struct ContentView: View {
     @AppStorage("nous.demo.max_thinking_tokens") private var maxThinkingTokensText = "8000"
     @State private var services: [[String: Any]] = []
     @State private var builtinTools: [String] = []
+    @State private var allTools = true
     @State private var restrictTools = false
     @State private var allowedTools = Set<String>()
-    @State private var extraAllowedToolsText = ""
     @State private var mcpServersText = ""
     @State private var agentsText = ""
     @State private var showSettings = false
@@ -249,20 +249,6 @@ struct ContentView: View {
                 }
             }
         )
-    }
-
-    private func parseCommaNewlineList(_ text: String) -> [String] {
-        let raw = text
-            .split(whereSeparator: { $0 == "," || $0 == "\n" || $0 == "\r" })
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        var seen = Set<String>()
-        var out: [String] = []
-        for s in raw where !seen.contains(s) {
-            seen.insert(s)
-            out.append(s)
-        }
-        return out
     }
 
     private func parseJSONObjectText(_ text: String) throws -> [String: Any] {
@@ -452,28 +438,30 @@ struct ContentView: View {
                                 }
 
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Toggle("restrict allowed_tools", isOn: $restrictTools)
-                                    if restrictTools {
-                                        if builtinTools.isEmpty {
-                                            Text("builtin_tools not loaded (click Load Builtin Tools)")
-                                                .font(.system(.caption, design: .monospaced))
-                                                .foregroundStyle(.secondary)
-                                        } else {
-                                            ScrollView {
-                                                LazyVStack(alignment: .leading, spacing: 4) {
-                                                    ForEach(builtinTools, id: \.self) { name in
-                                                        Toggle(isOn: bindingForAllowedTool(name)) {
-                                                            Text(name)
-                                                                .font(.system(.caption, design: .monospaced))
+                                    Toggle("all_tools (allowed_tools: [\"*\"])", isOn: $allTools)
+                                        .font(.system(.caption, design: .monospaced))
+                                    if !allTools {
+                                        Toggle("restrict allowed_tools", isOn: $restrictTools)
+                                        if restrictTools {
+                                            if builtinTools.isEmpty {
+                                                Text("builtin_tools not loaded (click Load Builtin Tools)")
+                                                    .font(.system(.caption, design: .monospaced))
+                                                    .foregroundStyle(.secondary)
+                                            } else {
+                                                ScrollView {
+                                                    LazyVStack(alignment: .leading, spacing: 4) {
+                                                        ForEach(builtinTools, id: \.self) { name in
+                                                            Toggle(isOn: bindingForAllowedTool(name)) {
+                                                                Text(name)
+                                                                    .font(.system(.caption, design: .monospaced))
+                                                            }
                                                         }
                                                     }
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
                                                 }
-                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .frame(minHeight: 80)
                                             }
-                                            .frame(minHeight: 80)
                                         }
-                                        TextField("extra allowed_tools (comma/newline separated)", text: $extraAllowedToolsText)
-                                            .font(.system(.caption, design: .monospaced))
                                     }
                                 }
 
@@ -892,14 +880,13 @@ struct ContentView: View {
                 serviceConfig["agents"] = try parseJSONObjectText(agentsRaw)
             }
 
-            if restrictTools {
+            if allTools {
+                serviceConfig["allowed_tools"] = ["*"]
+            } else if restrictTools {
                 var tools = Set<String>()
                 for t in allowedTools {
                     let s = t.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !s.isEmpty { tools.insert(s) }
-                }
-                for t in parseCommaNewlineList(extraAllowedToolsText) {
-                    tools.insert(t)
                 }
                 serviceConfig["allowed_tools"] = tools.sorted()
             }
