@@ -277,8 +277,8 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
   "model": "sonnet",
   "fallback_model": "haiku",
   "max_thinking_tokens": 8000,
-  "permission_mode": "default",
-  "allowed_tools": ["Read", "Write", "Bash", "AskUserQuestion"],
+  "permission_mode": "acceptEdits",
+  "allowed_tools": ["Skill", "Read", "Write", "Bash", "AskUserQuestion", "mcp__playwright__*"],
   "setting_sources": ["project"],
   "mcp_servers": {
     "playwright": {
