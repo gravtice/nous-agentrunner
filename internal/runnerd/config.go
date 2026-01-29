@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,6 +36,7 @@ type Config struct {
 	GuestBinaryPath   string
 
 	GuestRunnerPort int // guest-runnerd inside VM
+	GuestForwardPort int // host port forwarded to guest-runnerd
 
 	MaxInlineBytes int64
 
@@ -44,6 +46,10 @@ type Config struct {
 
 	VMCPU       int
 	VMMemoryMiB int
+
+	// VsockTunnelPort is the host-side AF_VSOCK port used for guest->host tunnels.
+	// On non-darwin hosts this will be 0.
+	VsockTunnelPort int
 }
 
 type instanceConfig struct {
@@ -257,6 +263,44 @@ func LoadConfig() (Config, error) {
 		guestPort = 17777
 	}
 
+	guestForwardPort := mustParseInt(env["NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT"], 0)
+	if guestForwardPort == 0 {
+		for range 16 {
+			guestForwardPort, err = pickFreeLocalPort()
+			if err != nil {
+				return Config{}, err
+			}
+			if guestForwardPort != port {
+				break
+			}
+		}
+		if guestForwardPort == port {
+			return Config{}, fmt.Errorf("failed to allocate guest forward port distinct from NOUS_AGENT_RUNNER_PORT (%d)", port)
+		}
+		if err := persistEnv(filepath.Join(paths.AppSupportDir, ".env.local"), env, map[string]string{
+			"NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT": strconv.Itoa(guestForwardPort),
+		}); err != nil {
+			return Config{}, err
+		}
+	} else if guestForwardPort == port {
+		return Config{}, fmt.Errorf("NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT conflicts with NOUS_AGENT_RUNNER_PORT (%d)", port)
+	}
+
+	vsockTunnelPort := mustParseInt(env["NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT"], 0)
+	if vsockTunnelPort == 0 {
+		if runtime.GOOS == "darwin" {
+			vsockTunnelPort, err = pickFreeVsockPort()
+			if err != nil {
+				return Config{}, err
+			}
+			if err := persistEnv(filepath.Join(paths.AppSupportDir, ".env.local"), env, map[string]string{
+				"NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT": strconv.Itoa(vsockTunnelPort),
+			}); err != nil {
+				return Config{}, err
+			}
+		}
+	}
+
 	token, err := loadOrCreateToken(paths.AppSupportDir)
 	if err != nil {
 		return Config{}, err
@@ -292,11 +336,13 @@ func LoadConfig() (Config, error) {
 		NoProxy:           noProxy,
 		GuestBinaryPath:   guestBinaryPath,
 		GuestRunnerPort:   guestPort,
+		GuestForwardPort:  guestForwardPort,
 		MaxInlineBytes:    maxInlineBytes,
 		Token:             token,
 		Paths:             paths,
 		VMCPU:             vmCPU,
 		VMMemoryMiB:       vmMemMiB,
+		VsockTunnelPort:   vsockTunnelPort,
 	}, nil
 }
 

@@ -114,6 +114,10 @@ public final class NousAgentRunnerClient {
         try await requestJSON(method: "GET", path: "/v1/system/status", body: nil, timeoutSeconds: 30)
     }
 
+    public func diagnoseGuestToHostTunnel() async throws -> [String: Any] {
+        try await requestJSON(method: "POST", path: "/v1/system/diagnostics/guest_to_host_tunnel", body: nil, timeoutSeconds: 600)
+    }
+
     public func getSystemPaths() async throws -> [String: Any] {
         try await requestJSON(method: "GET", path: "/v1/system/paths", body: nil, timeoutSeconds: 30)
     }

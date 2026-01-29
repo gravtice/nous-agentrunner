@@ -28,6 +28,10 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /internal/ports/free", s.handleFreePort)
 
+	mux.HandleFunc("POST /internal/tunnels", s.handleTunnelCreate)
+	mux.HandleFunc("DELETE /internal/tunnels/{tunnel_id}", s.handleTunnelDelete)
+	mux.HandleFunc("POST /internal/tunnels/{tunnel_id}/probe", s.handleTunnelProbe)
+
 	return mux
 }
 

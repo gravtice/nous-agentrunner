@@ -4,5 +4,4 @@
 
 ## 技术债 / 可优化项
 
-- [ ] Host↔Guest 通信改为 `vsock + gRPC`：替换基于 `ssh.config` + SSH port-forward 的实现，减少依赖与边界复杂度。
-
+- [x] Host↔Guest 通信改为 `vsock + gRPC`：替换基于 `ssh.config` + SSH port-forward 的实现，减少依赖与边界复杂度。

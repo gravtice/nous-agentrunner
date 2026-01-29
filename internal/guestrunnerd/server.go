@@ -14,12 +14,17 @@ type Server struct {
 	mu     sync.Mutex
 	state  State
 	config Config
+
+	tunnels          map[string]*tunnelEntry
+	tunnelByHostPort map[int]string
 }
 
 type Config struct {
 	ListenAddr string
 	ListenPort int
 	StateDir   string
+
+	HostTunnelVsockPort int
 }
 
 type State struct {
@@ -48,6 +53,8 @@ func NewServer(cfg Config) (*Server, error) {
 		state: State{
 			Services: make(map[string]Service),
 		},
+		tunnels:          make(map[string]*tunnelEntry),
+		tunnelByHostPort: make(map[int]string),
 	}
 	if err := s.loadState(); err != nil {
 		return nil, err

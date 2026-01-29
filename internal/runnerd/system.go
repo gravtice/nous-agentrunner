@@ -29,6 +29,8 @@ func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 			"restart_required":    restartRequired,
 			"backend":             "lima",
 			"guest_runnerd_port":  s.cfg.GuestRunnerPort,
+			"guest_forward_port":  s.cfg.GuestForwardPort,
+			"host_tunnel_vsock":   s.cfg.VsockTunnelPort,
 			"lima_instance_name":  s.cfg.LimaInstanceName,
 			"lima_home_directory": s.cfg.LimaHome,
 		},

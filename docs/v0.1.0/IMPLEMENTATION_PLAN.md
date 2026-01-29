@@ -73,7 +73,7 @@
 │       - Shared VM Manager (Lima + AVF)                                 │
 │       - Share whitelist manager                                        │
 │       - Image/service state & auth (files; Keychain 预留)              │
-│             │  (SSH port-forward)                                      │
+│             │  (vsock + gRPC tunnel / portForwards)                    │
 │             ▼                                                          │
 │  ┌──────────────────────── Linux VM (Guest) ───────────────────────┐  │
 │  │  nous-guest-runnerd                                              │  │
@@ -93,7 +93,7 @@
 
 关键点：
 
-- v1 采用 **Lima 子进程 + SSH port-forward** 连接 Guest 内 `nous-guest-runnerd`（控制与数据转发都复用该通道）；vsock 可作为后续优化方向。
+- v1 采用 **Lima 子进程 + gRPC port forwarder（底层 vsock）** 连接 Guest 内 `nous-guest-runnerd`；不再依赖 `ssh.config` + SSH port-forward。
 - Guest 出网通过 VM NAT 网络；容器出网由 Guest 网络栈提供。
 - 目录共享使用 AVF VirtioFS，在 VM 启动时一次性配置所有 Share。
 
@@ -169,7 +169,7 @@ SDK 提供获取该路径的 API（或 ASMP 提供 `GET /v1/system/paths`）。
 - 管理镜像与 Service 的 ASMP API（转发到 Guest）。
 - 作为 ASP（数据面）网关：
   - 对外提供 ASP 接口（v1 暂定 WebSocket）。
-  - 对内通过 SSH port-forward 与 Guest 交互，并把流式响应转发给客户端。
+  - 对内通过 Lima `portForwards`（gRPC tunnel / vsock）与 Guest 交互，并把流式响应转发给客户端。
 - 鉴权：
   - 本机 token（Bearer），v1 实现落盘到 `~/Library/Application Support/NousAgentRunner/<instance_id>/token`（Keychain 作为后续增强）。
   - 仅本机调用，不做复杂身份绑定。
@@ -553,12 +553,12 @@ Runner 对 `service_config` 不做强 schema 校验（v1），只做 JSON 透传
 
 ## 11. Host ↔ Guest 通信（v1 实现方式）
 
-由于 v1 采用 **Lima 子进程方式**，Host 侧直接使用 vsock 的成本较高；因此 v1 实现选择：
+v1 仍以 **HTTP(JSON) + WebSocket** 作为 Host ↔ Guest 的上层协议；但传输通道不再依赖 `ssh.config` + SSH port-forward：
 
-- Host 通过 Lima 生成的 `ssh.config` 建立 **SSH port-forward** 到 Guest `127.0.0.1:<NOUS_GUEST_RUNNERD_PORT>`。
-- Host ↔ Guest 之间以 **HTTP(JSON) + WebSocket** 通信（Guest `nous-guest-runnerd` 提供 `/internal/*` 接口）。
+- Host → Guest：通过 Lima hostagent 的 **gRPC port forwarder（VZ 下 guestagent 连接走 vsock）** 将 Guest `127.0.0.1:<NOUS_GUEST_RUNNERD_PORT>` 映射到 Host `127.0.0.1:<NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT>`。
+- Guest → Host（`POST /v1/tunnels`）：由 Guest 主动通过 **AF_VSOCK** 连接 Host 的 `NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT`，按需转发 Host `127.0.0.1:<host_port>`。
 
-ASP 转发复用同一 SSH 通道：
+ASP 转发复用同一转发通道：
 
 - Host 负责对外 ASP（v1：WS），并将 WS 事件转发到 Guest。
 - Guest 负责与容器 WS 通信并回传增量事件给 Host（Host 侧只做校验与转发）。
@@ -686,7 +686,7 @@ App 启动后由 SDK/集成代码负责：
    - `mountType: virtiofs`  
    - `mounts`：由 Share 白名单生成，`location == mountPoint == host_path`（满足“同路径挂载”）  
    - `writable: true`（Guest 层允许写；默认只读由容器 bind mount 强制）
-3. 在 Guest 内安装/启动 `nous-guest-runnerd`（systemd），并作为 Host ↔ Guest 的稳定控制入口（通过 SSH port-forward 访问）。
+3. 在 Guest 内安装/启动 `nous-guest-runnerd`（systemd），并作为 Host ↔ Guest 的稳定控制入口（通过 Lima `portForwards` 访问；由 Lima provision/cloud-init 安装与启动）。
 4. 对外 ASMP / ASP 始终由 `nous-agent-runnerd` 提供；避免把运行时行为绑死在 `limactl shell` / `lima nerdctl` 这类“命令封装”上（调试可用，但不作为产品依赖）。
 
 主要取舍：

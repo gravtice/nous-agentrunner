@@ -12,6 +12,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/system/status", s.withAuth(s.handleSystemStatus))
 	mux.HandleFunc("GET /v1/system/paths", s.withAuth(s.handleSystemPaths))
 	mux.HandleFunc("POST /v1/system/vm/restart", s.withAuth(s.handleVMRestart))
+	mux.HandleFunc("POST /v1/system/diagnostics/guest_to_host_tunnel", s.withAuth(s.handleSystemDiagnosticsGuestToHostTunnel))
 
 	mux.HandleFunc("GET /v1/shares", s.withAuth(s.handleSharesList))
 	mux.HandleFunc("POST /v1/shares", s.withAuth(s.handleSharesAdd))

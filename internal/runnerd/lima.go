@@ -27,10 +27,6 @@ func (s *Server) limaInstanceDir() string {
 	return filepath.Join(s.cfg.LimaHome, s.cfg.LimaInstanceName)
 }
 
-func (s *Server) limaSSHConfigPath() string {
-	return filepath.Join(s.limaInstanceDir(), "ssh.config")
-}
-
 func (s *Server) limaConfigPath() string {
 	return filepath.Join(s.cfg.Paths.AppSupportDir, "lima", "instance.yaml")
 }
@@ -145,6 +141,9 @@ func (s *Server) ensureVMRunning(ctx context.Context) error {
 	if assets != nil {
 		log.Printf("vm.offline_assets: enabled (vm_image=%s nerdctl=%s)", assets.VMImagePath, assets.NerdctlArchivePath)
 	}
+	if err := stageGuestRunnerBinary(s.cfg); err != nil {
+		return err
+	}
 
 	s.mu.Lock()
 	cfgYAML := buildLimaYAML(s.cfg, s.shares, assets)
@@ -164,12 +163,25 @@ func (s *Server) ensureVMRunning(ctx context.Context) error {
 		}
 		return err
 	}
-	if _, err := os.Stat(filepath.Join(instanceDir, "lima.yaml")); err != nil {
+	instanceYAMLPath := filepath.Join(instanceDir, "lima.yaml")
+	if _, err := os.Stat(instanceYAMLPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			_ = os.RemoveAll(instanceDir)
 			_, err := s.runLimactl(ctx, "start", "--name", s.cfg.LimaInstanceName, s.limaConfigPath())
 			return err
 		}
+		return err
+	}
+	if needsRecreateForGuestChannel(instanceYAMLPath, s.cfg) {
+		log.Printf("vm.recreate: start (reason=config_changed)")
+		_, _ = s.runLimactl(ctx, "delete", "-f", s.cfg.LimaInstanceName)
+		s.mu.Lock()
+		if len(s.services) > 0 {
+			clear(s.services)
+			_ = s.saveServicesLocked()
+		}
+		s.mu.Unlock()
+		_, err := s.runLimactl(ctx, "start", "--name", s.cfg.LimaInstanceName, s.limaConfigPath())
 		return err
 	}
 
@@ -188,6 +200,24 @@ func (s *Server) ensureVMRunning(ctx context.Context) error {
 	return err
 }
 
+func needsRecreateForGuestChannel(instanceYAMLPath string, cfg Config) bool {
+	b, err := os.ReadFile(instanceYAMLPath)
+	if err != nil {
+		return false
+	}
+	s := string(b)
+	if !strings.Contains(s, fmt.Sprintf("guestPort: %d", cfg.GuestRunnerPort)) {
+		return true
+	}
+	if !strings.Contains(s, fmt.Sprintf("hostPort: %d", cfg.GuestForwardPort)) {
+		return true
+	}
+	if !strings.Contains(s, "nous-guest-runnerd") {
+		return true
+	}
+	return false
+}
+
 func (s *Server) runLimactl(ctx context.Context, args ...string) ([]byte, error) {
 	limactlArgs := append([]string{"--tty=false"}, args...)
 	if len(args) > 0 && args[0] == "start" {
@@ -199,6 +229,8 @@ func (s *Server) runLimactl(ctx context.Context, args ...string) ([]byte, error)
 	cmd := exec.CommandContext(ctx, s.cfg.LimactlPath, limactlArgs...)
 	env := os.Environ()
 	env = setEnv(env, "LIMA_HOME", s.cfg.LimaHome)
+	// Ensure port forwards use the gRPC tunnel (VZ: vsock) instead of SSH.
+	env = setEnv(env, "LIMA_SSH_PORT_FORWARDER", "false")
 	if s.cfg.LimaTemplatesPath != "" {
 		env = setEnv(env, "LIMA_TEMPLATES_PATH", s.cfg.LimaTemplatesPath)
 	}
@@ -413,6 +445,53 @@ func buildLimaYAML(cfg Config, shares []shareEntry, assets *offlineAssets) strin
 			b.WriteString("\n")
 		}
 	}
+	b.WriteString("\nportForwards:\n")
+	fmt.Fprintf(&b, "- guestIP: \"127.0.0.1\"\n  guestPort: %d\n  hostIP: \"127.0.0.1\"\n  hostPort: %d\n  proto: tcp\n\n", cfg.GuestRunnerPort, cfg.GuestForwardPort)
+
+	b.WriteString("provision:\n")
+	b.WriteString("- mode: system\n")
+	b.WriteString("  script: |\n")
+	b.WriteString("    #!/bin/bash\n")
+	b.WriteString("    set -euo pipefail\n")
+	fmt.Fprintf(&b, "    BIN_SRC=%s\n", yamlQuote(filepath.Join(cfg.Paths.DefaultSharedTmpDir, "nous-guest-runnerd")))
+	b.WriteString("    BIN_DST=/usr/local/bin/nous-guest-runnerd\n")
+	fmt.Fprintf(&b, "    PORT=%d\n", cfg.GuestRunnerPort)
+	fmt.Fprintf(&b, "    HOST_TUNNEL_VSOCK_PORT=%d\n", cfg.VsockTunnelPort)
+	b.WriteString("    STATE_DIR=/var/lib/nous-guest-runnerd\n")
+	b.WriteString("    i=0\n")
+	b.WriteString("    while [ $i -lt 60 ] && [ ! -x \"$BIN_SRC\" ]; do\n")
+	b.WriteString("      sleep 1\n")
+	b.WriteString("      i=$((i+1))\n")
+	b.WriteString("    done\n")
+	b.WriteString("    if [ ! -x \"$BIN_SRC\" ]; then\n")
+	b.WriteString("      echo >&2 \"missing guest runnerd binary: $BIN_SRC\"\n")
+	b.WriteString("      exit 1\n")
+	b.WriteString("    fi\n")
+	b.WriteString("    install -m 0755 \"$BIN_SRC\" \"$BIN_DST\"\n")
+	b.WriteString("    mkdir -p \"$STATE_DIR\"\n")
+	b.WriteString("    cat > /etc/systemd/system/nous-guest-runnerd.service <<EOF\n")
+	b.WriteString("    [Unit]\n")
+	b.WriteString("    Description=Nous Guest Runner Daemon\n")
+	b.WriteString("    After=network-online.target\n")
+	b.WriteString("    Wants=network-online.target\n")
+	b.WriteString("\n")
+	b.WriteString("    [Service]\n")
+	b.WriteString("    Type=simple\n")
+	b.WriteString("    Environment=NOUS_GUEST_RUNNERD_PORT=$PORT\n")
+	b.WriteString("    Environment=NOUS_GUEST_RUNNERD_STATE_DIR=$STATE_DIR\n")
+	b.WriteString("    Environment=NOUS_HOST_TUNNEL_VSOCK_PORT=$HOST_TUNNEL_VSOCK_PORT\n")
+	b.WriteString("    ExecStart=$BIN_DST\n")
+	b.WriteString("    Restart=always\n")
+	b.WriteString("    RestartSec=1\n")
+	b.WriteString("\n")
+	b.WriteString("    [Install]\n")
+	b.WriteString("    WantedBy=multi-user.target\n")
+	b.WriteString("    EOF\n")
+	b.WriteString("    systemctl daemon-reload\n")
+	b.WriteString("    systemctl enable --now nous-guest-runnerd\n")
+	b.WriteString("    systemctl restart nous-guest-runnerd\n")
+	b.WriteString("    systemctl is-active --quiet nous-guest-runnerd\n\n")
+
 	b.WriteString("mounts:\n")
 	for _, e := range shares {
 		b.WriteString("- location: ")

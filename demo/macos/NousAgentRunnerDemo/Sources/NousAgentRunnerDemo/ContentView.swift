@@ -290,6 +290,7 @@ struct ContentView: View {
                 Button("Refresh Status") { Task { await refreshStatus() } }
                 Button("Refresh Services") { Task { await refreshServices() } }
                 Button("Restart VM") { Task { await restartVM() } }
+                Button("Test Guest→Host Tunnel") { Task { await testGuestToHostTunnel() } }
                 Button("Create Service") { Task { await createService() } }
                 Button("Settings") { showSettings = true }
                 Button("Skills") { showSkills = true }
@@ -725,6 +726,30 @@ struct ContentView: View {
             let c = try client()
             let resp = try await c.getBuiltinTools(serviceType: "claude")
             builtinTools = resp["builtin_tools"] as? [String] ?? []
+        } catch {
+            statusText = "Error: \(error)"
+        }
+    }
+
+    @MainActor
+    private func testGuestToHostTunnel() async {
+        statusText = "Testing guest→host tunnel (may take a few minutes on first run)..."
+        let ok = await ensureRunnerRunning()
+        guard ok else { return }
+        do {
+            let c = try client()
+            let out = try await c.diagnoseGuestToHostTunnel()
+            let ok = (out["ok"] as? Bool) == true
+            let hostPort = out["host_port"] as? Int ?? 0
+            let guestPort = out["guest_port"] as? Int ?? 0
+            let elapsed = out["elapsed_ms"] as? Int ?? 0
+            let reply = (out["reply"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if ok {
+                statusText = "guest→host tunnel OK (host_port=\(hostPort) guest_port=\(guestPort) elapsed_ms=\(elapsed) reply=\(reply))"
+            } else {
+                let err = (out["error"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                statusText = "guest→host tunnel FAILED: \(err.isEmpty ? out.description : err)"
+            }
         } catch {
             statusText = "Error: \(error)"
         }

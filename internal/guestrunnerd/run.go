@@ -17,15 +17,23 @@ func Run(ctx context.Context) error {
 		}
 	}
 
+	hostTunnelVsockPort := 0
+	if v := os.Getenv("NOUS_HOST_TUNNEL_VSOCK_PORT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			hostTunnelVsockPort = n
+		}
+	}
+
 	stateDir := os.Getenv("NOUS_GUEST_RUNNERD_STATE_DIR")
 	if stateDir == "" {
 		stateDir = "/var/lib/nous-guest-runnerd"
 	}
 
 	s, err := NewServer(Config{
-		ListenAddr: "127.0.0.1",
-		ListenPort: port,
-		StateDir:   stateDir,
+		ListenAddr:          "127.0.0.1",
+		ListenPort:          port,
+		StateDir:            stateDir,
+		HostTunnelVsockPort: hostTunnelVsockPort,
 	})
 	if err != nil {
 		return err

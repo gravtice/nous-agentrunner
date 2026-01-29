@@ -21,6 +21,9 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	go s.runIdleServiceReaper(ctx)
+	if err := s.startVsockTunnelServer(ctx); err != nil {
+		return err
+	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.ListenAddr, cfg.ListenPort)
 	ln, err := net.Listen("tcp", addr)
