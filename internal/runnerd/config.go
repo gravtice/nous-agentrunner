@@ -287,16 +287,34 @@ func LoadConfig() (Config, error) {
 	}
 
 	vsockTunnelPort := mustParseInt(env["NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT"], 0)
+	// Negative values disable vsock tunnel auto-allocation on darwin.
+	// This allows runnerd to start on hosts that do not support AF_VSOCK.
+	if vsockTunnelPort < 0 {
+		vsockTunnelPort = 0
+	}
 	if vsockTunnelPort == 0 {
 		if runtime.GOOS == "darwin" {
 			vsockTunnelPort, err = pickFreeVsockPort()
 			if err != nil {
-				return Config{}, err
+				if isVsockUnavailable(err) {
+					vsockTunnelPort = 0
+					// Persist a sentinel to avoid repeated startup probes on hosts
+					// where AF_VSOCK is unavailable.
+					if err := persistEnv(filepath.Join(paths.AppSupportDir, ".env.local"), env, map[string]string{
+						"NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT": "-1",
+					}); err != nil {
+						return Config{}, err
+					}
+				} else {
+					return Config{}, err
+				}
 			}
-			if err := persistEnv(filepath.Join(paths.AppSupportDir, ".env.local"), env, map[string]string{
-				"NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT": strconv.Itoa(vsockTunnelPort),
-			}); err != nil {
-				return Config{}, err
+			if vsockTunnelPort > 0 {
+				if err := persistEnv(filepath.Join(paths.AppSupportDir, ".env.local"), env, map[string]string{
+					"NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT": strconv.Itoa(vsockTunnelPort),
+				}); err != nil {
+					return Config{}, err
+				}
 			}
 		}
 	}

@@ -31,6 +31,11 @@ func (s *Server) startVsockTunnelServer(ctx context.Context) error {
 
 	fd, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM, 0)
 	if err != nil {
+		if isVsockUnavailable(err) {
+			log.Printf("vsock: unavailable (%v); guest->host tunnels disabled", err)
+			s.cfg.VsockTunnelPort = 0
+			return nil
+		}
 		return err
 	}
 
@@ -41,10 +46,20 @@ func (s *Server) startVsockTunnelServer(ctx context.Context) error {
 	const any = ^uint32(0)
 	if err := unix.Bind(fd, &unix.SockaddrVM{CID: any, Port: uint32(s.cfg.VsockTunnelPort)}); err != nil {
 		closeFD()
+		if isVsockUnavailable(err) {
+			log.Printf("vsock: unavailable (%v); guest->host tunnels disabled", err)
+			s.cfg.VsockTunnelPort = 0
+			return nil
+		}
 		return err
 	}
 	if err := unix.Listen(fd, 128); err != nil {
 		closeFD()
+		if isVsockUnavailable(err) {
+			log.Printf("vsock: unavailable (%v); guest->host tunnels disabled", err)
+			s.cfg.VsockTunnelPort = 0
+			return nil
+		}
 		return err
 	}
 
@@ -158,4 +173,3 @@ func proxyStream(ctx context.Context, a io.ReadWriteCloser, b io.ReadWriteCloser
 	_ = b.Close()
 	<-errCh
 }
-

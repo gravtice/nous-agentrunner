@@ -28,7 +28,7 @@ func (s *Server) handleSystemDiagnosticsGuestToHostTunnel(w http.ResponseWriter,
 
 	if s.cfg.VsockTunnelPort <= 0 {
 		resp.OK = false
-		resp.Error = "vsock tunnel is not enabled (NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT)"
+		resp.Error = "vsock tunnel is disabled or unavailable (NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT)"
 		return
 	}
 

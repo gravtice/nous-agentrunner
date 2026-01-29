@@ -540,7 +540,7 @@ Claude Agent Service 容器内部建议将 `service_config` 直接视为 Claude 
 
 - `system_prompt`：system prompt
 - `allowed_tools` / `disallowed_tools`：工具白/黑名单（支持 glob，例如 `mcp__github__*`）
-- `permission_mode`：必须选择非交互模式（否则会卡死等待 TTY）；MCP 工具需显式授权（`allowed_tools` 或 `acceptEdits`/`bypassPermissions`）
+- `permission_mode`：必须选择非交互模式（否则会卡死等待 TTY）；MCP 工具需要在 `allowed_tools` 中显式列出（可用 glob），`permission_mode` 仅控制交互确认方式
 - `cwd`：工作目录（建议默认指向默认临时目录或用户指定目录）
 - `add_dirs`：额外允许访问的目录（建议自动包含所有 Share 白名单目录）
 - `mcp_servers`：MCP Server 配置（用于在容器内提供工具/检索等能力）；建议支持两种形态  
@@ -557,6 +557,7 @@ v1 仍以 **HTTP(JSON) + WebSocket** 作为 Host ↔ Guest 的上层协议；但
 
 - Host → Guest：通过 Lima hostagent 的 **gRPC port forwarder（VZ 下 guestagent 连接走 vsock）** 将 Guest `127.0.0.1:<NOUS_GUEST_RUNNERD_PORT>` 映射到 Host `127.0.0.1:<NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT>`。
 - Guest → Host（`POST /v1/tunnels`）：由 Guest 主动通过 **AF_VSOCK** 连接 Host 的 `NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT`，按需转发 Host `127.0.0.1:<host_port>`。
+  - 若 Host 不支持 `AF_VSOCK`：Runner 会自动禁用该能力，并将 `NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT=-1` 写入 `.env.local`（可手动删除/改为 `0` 以再次尝试自动分配）。
 
 ASP 转发复用同一转发通道：
 
