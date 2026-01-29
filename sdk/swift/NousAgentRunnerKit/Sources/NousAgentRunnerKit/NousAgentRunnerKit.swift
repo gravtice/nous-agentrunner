@@ -130,6 +130,21 @@ public final class NousAgentRunnerClient {
         try await requestJSON(method: "GET", path: "/v1/skills", body: nil, timeoutSeconds: 30)
     }
 
+    public func discoverSkills(source: String, ref: String? = nil, subpath: String? = nil) async throws -> [String: Any] {
+        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            throw NousAgentRunnerError.invalidConfig("source is required")
+        }
+        var body: [String: Any] = ["source": trimmed]
+        if let ref, !ref.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body["ref"] = ref
+        }
+        if let subpath, !subpath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body["subpath"] = subpath
+        }
+        return try await requestJSON(method: "POST", path: "/v1/skills/discover", body: body, timeoutSeconds: 1800)
+    }
+
     public func installSkills(source: String, ref: String? = nil, subpath: String? = nil, skills: [String] = [], replace: Bool = false) async throws -> [String: Any] {
         let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
