@@ -700,6 +700,8 @@ struct ContentView: View {
 
     @MainActor
     private func refreshStatus() async {
+        let ok = await ensureRunnerRunning()
+        guard ok else { return }
         do {
             let c = try client()
             let status = try await c.getSystemStatus()
@@ -711,6 +713,8 @@ struct ContentView: View {
 
     @MainActor
     private func refreshServices() async {
+        let ok = await ensureRunnerRunning()
+        guard ok else { return }
         do {
             let c = try client()
             let resp = try await c.listServices()
@@ -722,6 +726,8 @@ struct ContentView: View {
 
     @MainActor
     private func refreshBuiltinTools() async {
+        let ok = await ensureRunnerRunning()
+        guard ok else { return }
         do {
             let c = try client()
             let resp = try await c.getBuiltinTools(serviceType: "claude")
@@ -758,6 +764,8 @@ struct ContentView: View {
     @MainActor
     private func restartVM() async {
         statusText = "Restarting VM (may take a few minutes on first run)..."
+        let ok = await ensureRunnerRunning()
+        guard ok else { return }
         do {
             let c = try client()
             _ = try await c.restartVM()
@@ -772,6 +780,8 @@ struct ContentView: View {
     private func deleteService(serviceID: String) async {
         let sid = serviceID.trimmingCharacters(in: .whitespacesAndNewlines)
         if sid.isEmpty { return }
+        let ok = await ensureRunnerRunning()
+        guard ok else { return }
         do {
             let c = try client()
             _ = try await c.deleteService(serviceID: sid)
@@ -788,6 +798,8 @@ struct ContentView: View {
     private func stopService(serviceID: String) async {
         let sid = serviceID.trimmingCharacters(in: .whitespacesAndNewlines)
         if sid.isEmpty { return }
+        let ok = await ensureRunnerRunning()
+        guard ok else { return }
         do {
             let c = try client()
             _ = try await c.stopService(serviceID: sid)
@@ -803,6 +815,8 @@ struct ContentView: View {
         let sid = serviceID.trimmingCharacters(in: .whitespacesAndNewlines)
         if sid.isEmpty { return }
         statusText = "Resuming service..."
+        let ok = await ensureRunnerRunning()
+        guard ok else { return }
         do {
             let c = try client()
             _ = try await c.resumeService(serviceID: sid)
@@ -817,6 +831,8 @@ struct ContentView: View {
     @MainActor
     private func createService() async {
         statusText = "Creating Claude service (may take a few minutes on first run)..."
+        let ok = await ensureRunnerRunning()
+        guard ok else { return }
         do {
             let c = try client()
             let rw = rwMount.trimmingCharacters(in: .whitespacesAndNewlines)
