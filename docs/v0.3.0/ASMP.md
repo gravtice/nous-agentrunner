@@ -94,7 +94,7 @@
 - `source`：必填。支持的格式见 **2.3**。
 - `ref`：可选。覆盖 `source` 内自带的 ref（如 `.../tree/<ref>/...`）。用于指定分支/标签/提交（尽力而为）。
 - `subpath`：可选。覆盖 `source` 内自带的 subpath。用于指定仓库内子路径。
-- `skills`：可选。若为空/缺省：安装所有发现到的 skills；否则只安装列表内匹配的 skill（匹配 `install_name` 或 `SKILL.md` 的 `name`，大小写不敏感；建议使用 discover 返回的 `install_name`）。
+- `skills`：可选。若为空/缺省：安装所有发现到的 skills；否则只安装列表内匹配的 skill（仅匹配 discover 返回的 `install_name`，大小写不敏感）。
 - `replace`：可选。默认 `false`。若 `true`：覆盖已存在的 skill 目录。
 
 返回：
@@ -117,7 +117,7 @@
 Runner 支持以下常见输入（优先级与解析逻辑对齐 vercel-labs/skills）：
 
 - GitHub shorthand：`owner/repo` 或 `owner/repo/subpath`
-- GitHub @skill：`owner/repo@skill-name`（等价于 `skills=["skill-name"]`）
+- GitHub @skill：`owner/repo@skill-name`（`skill-name` 解释为 `install_name`；等价于 `skills=["skill-name"]`）
 - GitHub URL：
   - `https://github.com/owner/repo`
   - `https://github.com/owner/repo/tree/<ref>`

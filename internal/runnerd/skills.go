@@ -479,36 +479,19 @@ func selectSkills(all []discoveredSkill, wanted []string) ([]discoveredSkill, er
 		return all, nil
 	}
 
-	byKey := make(map[string]discoveredSkill, len(all)*2)
-	ambiguous := make(map[string]bool)
-	addKey := func(key string, s discoveredSkill) {
-		key = strings.ToLower(strings.TrimSpace(key))
-		if key == "" {
-			return
-		}
-		if existing, ok := byKey[key]; ok {
-			if strings.ToLower(existing.InstallName) != strings.ToLower(s.InstallName) {
-				ambiguous[key] = true
-			}
-			return
-		}
-		byKey[key] = s
-	}
+	byInstallName := make(map[string]discoveredSkill, len(all))
 	for _, s := range all {
-		addKey(s.InstallName, s)
-		addKey(s.Name, s)
-	}
-	for k := range ambiguous {
-		delete(byKey, k)
+		byInstallName[strings.ToLower(s.InstallName)] = s
 	}
 
 	var out []discoveredSkill
 	var missing []string
 	for _, w := range wanted {
+		w = strings.TrimSpace(w)
 		if w == "" {
 			continue
 		}
-		s, ok := byKey[strings.ToLower(w)]
+		s, ok := byInstallName[strings.ToLower(w)]
 		if !ok {
 			missing = append(missing, w)
 			continue

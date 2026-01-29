@@ -150,6 +150,17 @@ func TestSkillsInstall_List_Delete(t *testing.T) {
 		}
 	})
 
+	t.Run("install by skill name rejected", func(t *testing.T) {
+		body := mustMarshalJSON(t, map[string]any{"source": source, "skills": []string{"foo-skill"}})
+		req := httptest.NewRequest(http.MethodPost, "/v1/skills/install", bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer tok")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+	})
+
 	t.Run("install conflict", func(t *testing.T) {
 		body := mustMarshalJSON(t, map[string]any{"source": source, "skills": []string{"foo"}})
 		req := httptest.NewRequest(http.MethodPost, "/v1/skills/install", bytes.NewReader(body))
