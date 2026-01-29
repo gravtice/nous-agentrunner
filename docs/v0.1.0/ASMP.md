@@ -430,6 +430,7 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 说明：
 
 - `guest_port` 可直接写入 `service_config.mcp_servers.*.url`（容器侧以 `--network=host` 运行时，访问 `127.0.0.1:<guest_port>` 即可命中转发）。
+- 当前实现通过 Lima 的 SSH 连接创建 remote port forward（`ssh -R 127.0.0.1:<guest_port>:127.0.0.1:<host_port>`），依赖 VM sshd 允许 TCP forwarding。
 
 #### `DELETE /v1/tunnels/{tunnel_id}`
 

@@ -32,6 +32,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /internal/tunnels/{tunnel_id}", s.handleTunnelDelete)
 	mux.HandleFunc("POST /internal/tunnels/{tunnel_id}/probe", s.handleTunnelProbe)
 
+	mux.HandleFunc("POST /internal/diagnostics/tcp_probe", s.handleTCPProbe)
+
 	return mux
 }
 

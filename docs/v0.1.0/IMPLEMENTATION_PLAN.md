@@ -556,8 +556,7 @@ Runner 对 `service_config` 不做强 schema 校验（v1），只做 JSON 透传
 v1 仍以 **HTTP(JSON) + WebSocket** 作为 Host ↔ Guest 的上层协议；但传输通道不再依赖 `ssh.config` + SSH port-forward：
 
 - Host → Guest：通过 Lima hostagent 的 **gRPC port forwarder（VZ 下 guestagent 连接走 vsock）** 将 Guest `127.0.0.1:<NOUS_GUEST_RUNNERD_PORT>` 映射到 Host `127.0.0.1:<NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT>`。
-- Guest → Host（`POST /v1/tunnels`）：由 Guest 主动通过 **AF_VSOCK** 连接 Host 的 `NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT`，按需转发 Host `127.0.0.1:<host_port>`。
-  - 若 Host 不支持 `AF_VSOCK`：Runner 会自动禁用该能力，并将 `NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT=-1` 写入 `.env.local`（可手动删除/改为 `0` 以再次尝试自动分配）。
+- Guest → Host（`POST /v1/tunnels`）：Host 侧通过 Lima 的 SSH 连接建立 **remote port forward**（`ssh -R 127.0.0.1:<guest_port>:127.0.0.1:<host_port>`），把 Host 的 `127.0.0.1:<host_port>` 暴露为 Guest/容器可访问的 `127.0.0.1:<guest_port>`。
 
 ASP 转发复用同一转发通道：
 

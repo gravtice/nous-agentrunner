@@ -2,12 +2,10 @@ package runnerd
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -25,12 +23,6 @@ type guestToHostTunnelDiagnosticsResponse struct {
 func (s *Server) handleSystemDiagnosticsGuestToHostTunnel(w http.ResponseWriter, r *http.Request) {
 	resp := guestToHostTunnelDiagnosticsResponse{}
 	defer func() { writeJSON(w, http.StatusOK, resp) }()
-
-	if s.cfg.VsockTunnelPort <= 0 {
-		resp.OK = false
-		resp.Error = "vsock tunnel is disabled or unavailable (NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT)"
-		return
-	}
 
 	var ln net.Listener
 	var hostPort int
@@ -113,71 +105,38 @@ func (s *Server) handleSystemDiagnosticsGuestToHostTunnel(w http.ResponseWriter,
 		return
 	}
 
-	tunnelID, err := newID("tun_", 12)
-	if err != nil {
-		resp.OK = false
-		resp.Error = "failed to allocate tunnel_id"
-		return
+	var portResp struct {
+		Port int `json:"port"`
 	}
-
-	var tun Tunnel
-	guestReq := map[string]any{
-		"tunnel_id":  tunnelID,
-		"host_port":  hostPort,
-		"guest_port": 0,
-	}
-	if err := gc.postJSON(r.Context(), "/internal/tunnels", guestReq, &tun); err != nil {
+	if err := gc.getJSON(r.Context(), "/internal/ports/free", &portResp); err != nil {
 		resp.OK = false
 		resp.Error = err.Error()
 		return
 	}
 
-	if strings.TrimSpace(tun.TunnelID) == "" || tun.TunnelID != tunnelID {
+	guestPort := portResp.Port
+	if guestPort <= 0 || guestPort > 65535 {
 		resp.OK = false
-		resp.Error = "guest returned invalid tunnel_id"
-		return
-	}
-	if tun.HostPort != hostPort || tun.HostPort <= 0 || tun.HostPort > 65535 {
-		resp.OK = false
-		resp.Error = "guest returned invalid host_port"
-		return
-	}
-	if tun.GuestPort <= 0 || tun.GuestPort > 65535 {
-		resp.OK = false
-		resp.Error = "guest returned invalid guest_port"
+		resp.Error = "guest returned invalid free port"
 		return
 	}
 
-	resp.TunnelID = tun.TunnelID
-	resp.GuestPort = tun.GuestPort
-
-	entry := &tunnelEntry{Tunnel: tun}
-	s.mu.Lock()
-	if oldID, ok := s.tunnelByHostPort[hostPort]; ok && oldID != tun.TunnelID {
-		delete(s.tunnels, oldID)
+	cancel, _, err := s.startReverseSSHTunnel(r.Context(), hostPort, guestPort)
+	if err != nil {
+		resp.OK = false
+		resp.Error = err.Error()
+		return
 	}
-	s.tunnels[tun.TunnelID] = entry
-	s.tunnelByHostPort[hostPort] = tun.TunnelID
-	s.mu.Unlock()
+	defer cancel()
 
-	defer func() {
-		s.mu.Lock()
-		delete(s.tunnels, tun.TunnelID)
-		if id, ok := s.tunnelByHostPort[hostPort]; ok && id == tun.TunnelID {
-			delete(s.tunnelByHostPort, hostPort)
-		}
-		s.mu.Unlock()
-
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = gc.delete(ctx, "/internal/tunnels/"+tun.TunnelID)
-	}()
+	resp.TunnelID = "diag"
+	resp.GuestPort = guestPort
 
 	var probeResp struct {
 		Reply     string `json:"reply"`
 		ElapsedMS int64  `json:"elapsed_ms"`
 	}
-	if err := gc.postJSON(r.Context(), "/internal/tunnels/"+tun.TunnelID+"/probe", map[string]any{"payload": ping}, &probeResp); err != nil {
+	if err := gc.postJSON(r.Context(), "/internal/diagnostics/tcp_probe", map[string]any{"port": guestPort, "payload": ping}, &probeResp); err != nil {
 		resp.OK = false
 		resp.Error = err.Error()
 		return

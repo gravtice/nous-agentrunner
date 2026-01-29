@@ -1,9 +1,12 @@
 package runnerd
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type Tunnel struct {
@@ -16,6 +19,8 @@ type Tunnel struct {
 
 type tunnelEntry struct {
 	Tunnel
+	cancel context.CancelFunc
+	done   <-chan error
 }
 
 type tunnelsCreateRequest struct {
@@ -38,6 +43,23 @@ func (s *Server) handleTunnelsCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.mu.Lock()
+	if existingID, ok := s.tunnelByHostPort[req.HostPort]; ok {
+		if e, ok := s.tunnels[existingID]; ok && e.done != nil {
+			select {
+			case <-e.done:
+			default:
+				out := e.Tunnel
+				s.mu.Unlock()
+				writeJSON(w, http.StatusOK, out)
+				return
+			}
+		}
+		delete(s.tunnels, existingID)
+		delete(s.tunnelByHostPort, req.HostPort)
+	}
+	s.mu.Unlock()
+
 	tunnelID, err := newID("tun_", 12)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to allocate tunnel_id", nil)
@@ -50,37 +72,46 @@ func (s *Server) handleTunnelsCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var guestResp Tunnel
-	guestReq := map[string]any{
-		"tunnel_id":  tunnelID,
-		"host_port":  req.HostPort,
-		"guest_port": req.GuestPort,
+	guestPort := req.GuestPort
+	if guestPort == 0 {
+		var portResp struct {
+			Port int `json:"port"`
+		}
+		if err := gc.getJSON(r.Context(), "/internal/ports/free", &portResp); err != nil {
+			writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
+			return
+		}
+		guestPort = portResp.Port
 	}
-	if err := gc.postJSON(r.Context(), "/internal/tunnels", guestReq, &guestResp); err != nil {
-		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
-		return
-	}
-	if guestResp.HostPort != req.HostPort || guestResp.HostPort <= 0 || guestResp.HostPort > 65535 {
-		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", "guest returned invalid host_port", nil)
-		return
-	}
-	if guestResp.GuestPort <= 0 || guestResp.GuestPort > 65535 {
-		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", "guest returned invalid guest_port", nil)
-		return
-	}
-	if strings.TrimSpace(guestResp.TunnelID) == "" {
-		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", "guest returned empty tunnel_id", nil)
+	if guestPort <= 0 || guestPort > 65535 {
+		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", fmt.Sprintf("invalid guest port %d", guestPort), nil)
 		return
 	}
 
-	entry := &tunnelEntry{Tunnel: guestResp}
+	cancel, done, err := s.startReverseSSHTunnel(s.ctx, req.HostPort, guestPort)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "TUNNEL_FAILED", err.Error(), nil)
+		return
+	}
+
+	entry := &tunnelEntry{
+		Tunnel: Tunnel{
+			TunnelID:  tunnelID,
+			HostPort:  req.HostPort,
+			GuestPort: guestPort,
+			State:     "running",
+			CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		},
+		cancel: cancel,
+		done:   done,
+	}
 
 	s.mu.Lock()
-	if oldID, ok := s.tunnelByHostPort[guestResp.HostPort]; ok && oldID != guestResp.TunnelID {
+	if oldID, ok := s.tunnelByHostPort[req.HostPort]; ok && oldID != tunnelID {
 		delete(s.tunnels, oldID)
 	}
-	s.tunnels[guestResp.TunnelID] = entry
-	s.tunnelByHostPort[guestResp.HostPort] = guestResp.TunnelID
+	s.tunnels[tunnelID] = entry
+	s.tunnelByHostPort[req.HostPort] = tunnelID
 	s.mu.Unlock()
 
 	writeJSON(w, http.StatusOK, entry.Tunnel)
@@ -93,6 +124,8 @@ func (s *Server) handleTunnelsDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var cancel context.CancelFunc
+
 	s.mu.Lock()
 	entry, ok := s.tunnels[tunnelID]
 	if ok {
@@ -100,6 +133,7 @@ func (s *Server) handleTunnelsDelete(w http.ResponseWriter, r *http.Request) {
 		if id, ok2 := s.tunnelByHostPort[entry.HostPort]; ok2 && id == tunnelID {
 			delete(s.tunnelByHostPort, entry.HostPort)
 		}
+		cancel = entry.cancel
 	}
 	s.mu.Unlock()
 
@@ -108,8 +142,8 @@ func (s *Server) handleTunnelsDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if gc, err := s.ensureGuestReady(r.Context()); err == nil {
-		_ = gc.delete(r.Context(), "/internal/tunnels/"+tunnelID)
+	if cancel != nil {
+		cancel()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
