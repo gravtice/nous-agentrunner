@@ -8,6 +8,8 @@ import (
 
 func TestM1_BuildLimaYAML(t *testing.T) {
 	cfg := Config{
+		GuestRunnerPort:  17777,
+		GuestForwardPort: 12345,
 		VMCPU:            2,
 		VMMemoryMiB:      1024,
 		LimaBaseTemplate: "debian-12",
@@ -27,6 +29,9 @@ func TestM1_BuildLimaYAML(t *testing.T) {
 		"containerd:",
 		"system: true",
 		"user: false",
+		"guestPort: 17777",
+		"hostPort: 12345",
+		"ignore: true",
 		"mounts:",
 	} {
 		if !strings.Contains(got, want) {
