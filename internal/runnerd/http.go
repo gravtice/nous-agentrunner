@@ -33,7 +33,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/services/types/{service_type}/builtin_tools", s.withAuth(s.handleServiceTypeBuiltinTools))
 
 	mux.HandleFunc("POST /v1/tunnels", s.withAuth(s.handleTunnelsCreate))
+	mux.HandleFunc("GET /v1/tunnels", s.withAuth(s.handleTunnelsList))
+	mux.HandleFunc("GET /v1/tunnels/by_host_port/{host_port}", s.withAuth(s.handleTunnelsGetByHostPort))
 	mux.HandleFunc("DELETE /v1/tunnels/{tunnel_id}", s.withAuth(s.handleTunnelsDelete))
+	mux.HandleFunc("DELETE /v1/tunnels/by_host_port/{host_port}", s.withAuth(s.handleTunnelsDeleteByHostPort))
 
 	mux.HandleFunc("POST /v1/forwards", s.withAuth(s.handleForwardsCreate))
 	mux.HandleFunc("DELETE /v1/forwards/{forward_id}", s.withAuth(s.handleForwardsDelete))

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
-	"time"
 )
 
 type Tunnel struct {
@@ -100,7 +100,7 @@ func (s *Server) handleTunnelsCreate(w http.ResponseWriter, r *http.Request) {
 			HostPort:  req.HostPort,
 			GuestPort: guestPort,
 			State:     "running",
-			CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			CreatedAt: nowISO8601(),
 		},
 		cancel: cancel,
 		done:   done,
@@ -114,7 +114,78 @@ func (s *Server) handleTunnelsCreate(w http.ResponseWriter, r *http.Request) {
 	s.tunnelByHostPort[req.HostPort] = tunnelID
 	s.mu.Unlock()
 
+	go func() {
+		<-done
+		s.mu.Lock()
+		cur, ok := s.tunnels[tunnelID]
+		if !ok || cur != entry {
+			s.mu.Unlock()
+			return
+		}
+		delete(s.tunnels, tunnelID)
+		if id, ok := s.tunnelByHostPort[entry.HostPort]; ok && id == tunnelID {
+			delete(s.tunnelByHostPort, entry.HostPort)
+		}
+		s.mu.Unlock()
+	}()
+
 	writeJSON(w, http.StatusOK, entry.Tunnel)
+}
+
+func (s *Server) handleTunnelsList(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	out := make([]Tunnel, 0, len(s.tunnels))
+	for tunnelID, entry := range s.tunnels {
+		if entry == nil || entry.done == nil {
+			delete(s.tunnels, tunnelID)
+			if entry != nil {
+				if id, ok := s.tunnelByHostPort[entry.HostPort]; ok && id == tunnelID {
+					delete(s.tunnelByHostPort, entry.HostPort)
+				}
+			}
+			continue
+		}
+		select {
+		case <-entry.done:
+			delete(s.tunnels, tunnelID)
+			if id, ok := s.tunnelByHostPort[entry.HostPort]; ok && id == tunnelID {
+				delete(s.tunnelByHostPort, entry.HostPort)
+			}
+			continue
+		default:
+		}
+		out = append(out, entry.Tunnel)
+	}
+	s.mu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{"tunnels": out})
+}
+
+func (s *Server) handleTunnelsGetByHostPort(w http.ResponseWriter, r *http.Request) {
+	hostPortRaw := strings.TrimSpace(r.PathValue("host_port"))
+	if hostPortRaw == "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "host_port is required", nil)
+		return
+	}
+	hostPort, err := strconv.Atoi(hostPortRaw)
+	if err != nil || hostPort <= 0 || hostPort > 65535 {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "host_port must be 1..65535", nil)
+		return
+	}
+
+	s.mu.Lock()
+	entry, ok := s.findRunningTunnelByHostPortLocked(hostPort)
+	var out Tunnel
+	if ok {
+		out = entry.Tunnel
+	}
+	s.mu.Unlock()
+
+	if !ok {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "tunnel not found", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleTunnelsDelete(w http.ResponseWriter, r *http.Request) {
@@ -124,16 +195,38 @@ func (s *Server) handleTunnelsDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var cancel context.CancelFunc
+	s.mu.Lock()
+	cancel, ok := s.deleteTunnelLocked(tunnelID)
+	s.mu.Unlock()
+
+	if !ok {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "tunnel not found", nil)
+		return
+	}
+
+	if cancel != nil {
+		cancel()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+}
+
+func (s *Server) handleTunnelsDeleteByHostPort(w http.ResponseWriter, r *http.Request) {
+	hostPortRaw := strings.TrimSpace(r.PathValue("host_port"))
+	if hostPortRaw == "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "host_port is required", nil)
+		return
+	}
+	hostPort, err := strconv.Atoi(hostPortRaw)
+	if err != nil || hostPort <= 0 || hostPort > 65535 {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "host_port must be 1..65535", nil)
+		return
+	}
 
 	s.mu.Lock()
-	entry, ok := s.tunnels[tunnelID]
+	entry, ok := s.findRunningTunnelByHostPortLocked(hostPort)
+	var cancel context.CancelFunc
 	if ok {
-		delete(s.tunnels, tunnelID)
-		if id, ok2 := s.tunnelByHostPort[entry.HostPort]; ok2 && id == tunnelID {
-			delete(s.tunnelByHostPort, entry.HostPort)
-		}
-		cancel = entry.cancel
+		cancel, ok = s.deleteTunnelLocked(entry.TunnelID)
 	}
 	s.mu.Unlock()
 
@@ -146,4 +239,49 @@ func (s *Server) handleTunnelsDelete(w http.ResponseWriter, r *http.Request) {
 		cancel()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+}
+
+func (s *Server) findRunningTunnelByHostPortLocked(hostPort int) (*tunnelEntry, bool) {
+	tunnelID, ok := s.tunnelByHostPort[hostPort]
+	if !ok {
+		return nil, false
+	}
+
+	entry, ok := s.tunnels[tunnelID]
+	if !ok || entry == nil || entry.done == nil {
+		delete(s.tunnelByHostPort, hostPort)
+		delete(s.tunnels, tunnelID)
+		return nil, false
+	}
+
+	select {
+	case <-entry.done:
+		delete(s.tunnels, tunnelID)
+		if id, ok := s.tunnelByHostPort[hostPort]; ok && id == tunnelID {
+			delete(s.tunnelByHostPort, hostPort)
+		}
+		return nil, false
+	default:
+	}
+
+	return entry, true
+}
+
+func (s *Server) deleteTunnelLocked(tunnelID string) (context.CancelFunc, bool) {
+	entry, ok := s.tunnels[tunnelID]
+	if !ok {
+		return nil, false
+	}
+
+	delete(s.tunnels, tunnelID)
+	if entry != nil {
+		if id, ok := s.tunnelByHostPort[entry.HostPort]; ok && id == tunnelID {
+			delete(s.tunnelByHostPort, entry.HostPort)
+		}
+	}
+
+	if entry == nil {
+		return nil, true
+	}
+	return entry.cancel, true
 }

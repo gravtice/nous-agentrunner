@@ -12,6 +12,8 @@ func (s *Server) protocolCapabilityFlags() map[string]any {
 		"invalid_input_returns_done": true,
 		"service_idle_timeout":       true,
 		"skills_install":             true,
+		"tunnels_list":               true,
+		"tunnels_by_host_port":       true,
 	}
 }
 
