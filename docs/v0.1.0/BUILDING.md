@@ -68,6 +68,11 @@
 
 `scripts/macos/fetch_offline_assets.sh`
 
+说明（预烘焙 qcow2）：
+
+- 为避免首次启动时 Lima 在 VM 内执行 `apt-get update/install`（典型表现为 `limactl start` 长时间卡在 `containerd binaries to be installed`），该脚本会对下载的 Debian qcow2 做预烘焙：预装 `iptables` / `rsync` 并清理 apt cache、临时文件，然后再 sparsify 压缩输出。
+- 需要 `virt-customize` / `virt-sparsify`（推荐：`brew install libguestfs`）。
+
 2) 打包 DMG（`package_dmg.sh` 会自动探测并注入离线资产）：
 
 `scripts/macos/package_dmg.sh <app_path>`

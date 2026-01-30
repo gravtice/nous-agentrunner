@@ -17,6 +17,8 @@ require_cmd() {
 require_cmd curl
 require_cmd awk
 require_cmd python3
+require_cmd virt-customize
+require_cmd virt-sparsify
 
 mkdir -p "${ASSETS_DIR}"
 
@@ -104,11 +106,121 @@ if [ "${VM_IMAGE_FILE}" != "${NOUS_VM_VERSION}" ]; then
   fail "VM image filename mismatch: VERSION has ${NOUS_VM_VERSION} but template resolves ${VM_IMAGE_FILE}"
 fi
 
-echo "[1/2] download VM image (aarch64): ${VM_IMAGE_FILE}"
-curl -fL -C - -o "${ASSETS_DIR}/${VM_IMAGE_FILE}" "${VM_IMAGE_URL}"
+sha_digest() {
+  local algo="$1"
+  local path="$2"
+  python3 - "$algo" "$path" <<'PY'
+import hashlib
+import sys
+
+algo = sys.argv[1].strip().lower()
+path = sys.argv[2]
+try:
+    h = hashlib.new(algo)
+except ValueError as e:
+    raise SystemExit(f"unsupported digest algorithm: {algo}") from e
+
+with open(path, "rb") as f:
+    for chunk in iter(lambda: f.read(1024 * 1024), b""):
+        h.update(chunk)
+
+print(f"{algo}:{h.hexdigest()}")
+PY
+}
+
+digest_algo() {
+  local digest="$1"
+  if [ -z "${digest}" ]; then
+    return 0
+  fi
+  echo "${digest%%:*}"
+}
+
+verify_digest() {
+  local path="$1"
+  local expected="$2"
+  if [ -z "${expected}" ]; then
+    return 0
+  fi
+  local algo
+  algo="$(digest_algo "${expected}" | tr '[:upper:]' '[:lower:]')"
+  if [ -z "${algo}" ] || [ "${algo}" = "${expected}" ]; then
+    fail "invalid digest format: ${expected}"
+  fi
+  local got
+  got="$(sha_digest "${algo}" "${path}")"
+  local expected_hex="${expected#*:}"
+  local expected_norm="${algo}:${expected_hex}"
+  if [ "${got}" != "${expected_norm}" ]; then
+    fail "digest mismatch for ${path}: expected ${expected_norm} but got ${got}"
+  fi
+}
+
+bake_vm_image() {
+  local input="$1"
+  local output="$2"
+
+  local tmp_script
+  tmp_script="$(mktemp "${TMPDIR:-/tmp}/nous-vm-bake.XXXXXX")"
+  cat >"${tmp_script}" <<'SH'
+#!/bin/sh
+set -eux
+
+pkgs=""
+if [ ! -e /usr/sbin/iptables ]; then
+	pkgs="${pkgs} iptables"
+fi
+if ! command -v rsync >/dev/null 2>&1; then
+	pkgs="${pkgs} rsync"
+fi
+
+if [ -n "${pkgs}" ]; then
+	DEBIAN_FRONTEND=noninteractive
+	export DEBIAN_FRONTEND
+	apt-get update
+	# shellcheck disable=SC2086
+	apt-get install -y --no-upgrade --no-install-recommends -q ${pkgs}
+fi
+
+apt-get clean
+rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+rm -rf /tmp/* /var/tmp/*
+SH
+
+  virt-customize -a "${input}" --run "${tmp_script}"
+  rm -f "${tmp_script}"
+
+  local tmp_out
+  tmp_out="$(mktemp "${TMPDIR:-/tmp}/nous-vm-image.XXXXXX.qcow2")"
+  rm -f "${tmp_out}"
+  virt-sparsify --compress "${input}" "${tmp_out}"
+  rm -f "${output}"
+  mv -f "${tmp_out}" "${output}"
+}
+
+VM_IMAGE_PATH="${ASSETS_DIR}/${VM_IMAGE_FILE}"
+VM_IMAGE_DOWNLOAD_PATH="${ASSETS_DIR}/${VM_IMAGE_FILE}.download"
+
+if [ -f "${VM_IMAGE_PATH}" ]; then
+  echo "[1/2] VM image already present: ${VM_IMAGE_FILE}"
+else
+  echo "[1/2] download VM image (aarch64): ${VM_IMAGE_FILE}"
+  curl -fL -C - -o "${VM_IMAGE_DOWNLOAD_PATH}" "${VM_IMAGE_URL}"
+  verify_digest "${VM_IMAGE_DOWNLOAD_PATH}" "${VM_IMAGE_DIGEST}"
+
+  echo "[1/2] bake VM image (preinstall iptables, rsync): ${VM_IMAGE_FILE}"
+  bake_vm_image "${VM_IMAGE_DOWNLOAD_PATH}" "${VM_IMAGE_PATH}"
+  rm -f "${VM_IMAGE_DOWNLOAD_PATH}"
+fi
+
+VM_IMAGE_DIGEST="$(sha_digest sha512 "${VM_IMAGE_PATH}")"
 
 echo "[2/2] download nerdctl archive (aarch64): ${NERDCTL_FILE}"
 curl -fL -C - -o "${ASSETS_DIR}/${NERDCTL_FILE}" "${NERDCTL_URL}"
+verify_digest "${ASSETS_DIR}/${NERDCTL_FILE}" "${NERDCTL_DIGEST}"
+if [ -z "${NERDCTL_DIGEST}" ]; then
+  NERDCTL_DIGEST="$(sha_digest sha256 "${ASSETS_DIR}/${NERDCTL_FILE}")"
+fi
 
 OFFLINE_IMAGE_REF=""
 OFFLINE_IMAGE_FILE=""
@@ -156,6 +268,8 @@ m = {
         "file": os.environ["VM_IMAGE_FILE"],
         "digest": os.environ.get("VM_IMAGE_DIGEST", ""),
         "source_url": os.environ["VM_IMAGE_URL"],
+        "baked": True,
+        "baked_packages": ["iptables", "rsync"],
     },
     "containerd_archive": {
         "arch": "aarch64",
