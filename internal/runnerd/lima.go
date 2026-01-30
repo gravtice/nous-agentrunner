@@ -453,7 +453,8 @@ func buildLimaYAML(cfg Config, shares []shareEntry, assets *offlineAssets) strin
 		}
 	}
 	b.WriteString("\nportForwards:\n")
-	fmt.Fprintf(&b, "- guestIP: \"127.0.0.1\"\n  guestPort: %d\n  hostIP: \"127.0.0.1\"\n  hostPort: %d\n  proto: tcp\n\n", cfg.GuestRunnerPort, cfg.GuestForwardPort)
+	fmt.Fprintf(&b, "- guestIP: \"127.0.0.1\"\n  guestPort: %d\n  hostIP: \"127.0.0.1\"\n  hostPort: %d\n  proto: tcp\n", cfg.GuestRunnerPort, cfg.GuestForwardPort)
+	b.WriteString("- guestIP: \"0.0.0.0\"\n  guestIPMustBeZero: false\n  proto: any\n  ignore: true\n\n")
 
 	b.WriteString("provision:\n")
 	b.WriteString("- mode: system\n")
