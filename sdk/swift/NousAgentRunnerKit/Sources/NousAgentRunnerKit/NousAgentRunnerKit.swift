@@ -242,8 +242,20 @@ public final class NousAgentRunnerClient {
         return try await requestJSON(method: "POST", path: "/v1/tunnels", body: body, timeoutSeconds: 60)
     }
 
+    public func listTunnels() async throws -> [String: Any] {
+        try await requestJSON(method: "GET", path: "/v1/tunnels", body: nil, timeoutSeconds: 30)
+    }
+
+    public func getTunnelByHostPort(hostPort: Int) async throws -> [String: Any] {
+        try await requestJSON(method: "GET", path: "/v1/tunnels/by_host_port/\(hostPort)", body: nil, timeoutSeconds: 30)
+    }
+
     public func deleteTunnel(tunnelID: String) async throws -> [String: Any] {
         try await requestJSON(method: "DELETE", path: "/v1/tunnels/\(tunnelID)", body: nil, timeoutSeconds: 60)
+    }
+
+    public func deleteTunnelByHostPort(hostPort: Int) async throws -> [String: Any] {
+        try await requestJSON(method: "DELETE", path: "/v1/tunnels/by_host_port/\(hostPort)", body: nil, timeoutSeconds: 60)
     }
 
     public func openChatWebSocket(serviceID: String) throws -> URLSessionWebSocketTask {

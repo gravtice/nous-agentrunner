@@ -448,6 +448,63 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 - `guest_port` 可直接写入 `service_config.mcp_servers.*.url`（容器侧以 `--network=host` 运行时，访问 `127.0.0.1:<guest_port>` 即可命中转发）。
 - 当前实现通过 Lima 的 SSH 连接创建 remote port forward（`ssh -R 127.0.0.1:<guest_port>:127.0.0.1:<host_port>`），依赖 VM sshd 允许 TCP forwarding。
 
+#### `GET /v1/tunnels`
+
+语义：
+
+- 列出当前 Runner 维护的 tunnels（仅返回当前可用/运行中的 entries）
+- 实现侧可在 list 时做 best-effort stale 清理，避免返回已退出的 tunnel
+
+返回：
+
+```json
+{
+  "tunnels": [
+    {
+      "tunnel_id": "tun_...",
+      "host_port": 9222,
+      "guest_port": 18080,
+      "state": "running",
+      "created_at": "2026-01-30T00:00:00Z"
+    }
+  ]
+}
+```
+
+#### `GET /v1/tunnels/by_host_port/{host_port}`
+
+语义：
+
+- 按 `host_port` 获取 tunnel（用于客户端在不持久化 `tunnel_id` 的情况下恢复状态）
+
+返回：
+
+```json
+{"tunnel_id":"tun_...","host_port":9222,"guest_port":18080,"state":"running","created_at":"2026-01-30T00:00:00Z"}
+```
+
+错误：
+
+- 不存在：`404 NOT_FOUND`
+- 参数非法：`400 BAD_REQUEST`
+
+#### `DELETE /v1/tunnels/by_host_port/{host_port}`
+
+语义：
+
+- 按 `host_port` 删除 tunnel（用于客户端锁/解锁或资源回收）
+
+返回：
+
+```json
+{"deleted": true}
+```
+
+错误：
+
+- 不存在：`404 NOT_FOUND`
+- 参数非法：`400 BAD_REQUEST`
+
 #### `DELETE /v1/tunnels/{tunnel_id}`
 
 返回：
