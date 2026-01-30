@@ -12,6 +12,7 @@ RUN npm install -g @anthropic-ai/claude-code \
 
 # Install Claude Agent SDK from the vendored reference repo.
 COPY references/claude-agent-sdk-python /opt/claude-agent-sdk-python
+RUN test -f /opt/claude-agent-sdk-python/pyproject.toml || (echo >&2 "missing /opt/claude-agent-sdk-python/pyproject.toml (did you run: git submodule update --init --recursive ?)"; exit 1)
 RUN pip install --no-cache-dir -e /opt/claude-agent-sdk-python
 
 COPY services/claude-agent-service /app
