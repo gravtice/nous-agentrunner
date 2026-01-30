@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -117,3 +118,68 @@ func (s *Server) startReverseSSHTunnel(ctx context.Context, hostPort, guestPort 
 	return cancel, done, nil
 }
 
+func (s *Server) startSSHTunnel(ctx context.Context, hostPort, guestPort int) (*exec.Cmd, error) {
+	if hostPort <= 0 || hostPort > 65535 {
+		return nil, fmt.Errorf("invalid host port %d", hostPort)
+	}
+	if guestPort <= 0 || guestPort > 65535 {
+		return nil, fmt.Errorf("invalid guest port %d", guestPort)
+	}
+
+	sshConfigFile, err := s.limaSSHConfigFile(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	sshHost := "lima-" + s.cfg.LimaInstanceName
+	spec := fmt.Sprintf("127.0.0.1:%d:127.0.0.1:%d", hostPort, guestPort)
+
+	cmd := exec.CommandContext(ctx, "ssh",
+		"-F", sshConfigFile,
+		"-T",
+		"-N",
+		"-o", "ExitOnForwardFailure=yes",
+		"-o", "ControlMaster=no",
+		"-o", "ControlPath=none",
+		"-o", "ControlPersist=no",
+		"-o", "ServerAliveInterval=30",
+		"-o", "ServerAliveCountMax=3",
+		"-L", spec,
+		sshHost,
+	)
+	cmd.Stdout = io.Discard
+
+	var stderr cappedBuffer
+	stderr.max = 32 * 1024
+	stderrLog := newLineLogger("ssh(forward): ")
+	cmd.Stderr = io.MultiWriter(&stderr, stderrLog)
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	select {
+	case <-ctx.Done():
+		_ = cmd.Wait()
+		return nil, ctx.Err()
+	case <-time.After(250 * time.Millisecond):
+	}
+
+	if cmd.Process == nil {
+		return nil, errors.New("ssh tunnel failed to start")
+	}
+	if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
+		waitErr := cmd.Wait()
+		stderrLog.Flush()
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" && waitErr != nil {
+			msg = waitErr.Error()
+		}
+		if msg == "" {
+			msg = "ssh tunnel exited"
+		}
+		return nil, errors.New(msg)
+	}
+
+	return cmd, nil
+}

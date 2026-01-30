@@ -199,6 +199,7 @@ struct ContentView: View {
     @State private var showWorkDirPicker = false
     @AppStorage("nous.demo.service_env") private var serviceEnvText = ""
     @AppStorage("nous.demo.max_thinking_tokens") private var maxThinkingTokensText = "8000"
+    @AppStorage("nous.demo.idle_timeout_seconds") private var idleTimeoutSecondsText = "0"
     @State private var services: [[String: Any]] = []
     @State private var builtinTools: [String] = []
     @State private var allTools = true
@@ -392,6 +393,9 @@ struct ContentView: View {
                                     .font(.system(.caption, design: .monospaced))
 
                                 TextField("max_thinking_tokens (optional; e.g. 8000)", text: $maxThinkingTokensText)
+                                    .font(.system(.caption, design: .monospaced))
+
+                                TextField("idle_timeout_seconds (default 0)", text: $idleTimeoutSecondsText)
                                     .font(.system(.caption, design: .monospaced))
 
                                 HStack {
@@ -891,10 +895,22 @@ struct ContentView: View {
                 serviceConfig["allowed_tools"] = tools.sorted()
             }
 
+            let idleTimeoutSeconds: Int
+            let idleTimeoutValue = idleTimeoutSecondsText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if idleTimeoutValue.isEmpty {
+                idleTimeoutSeconds = 0
+            } else {
+                guard let n = Int(idleTimeoutValue), n >= 0 else {
+                    throw NousAgentRunnerError.invalidConfig("idle_timeout_seconds must be >= 0")
+                }
+                idleTimeoutSeconds = n
+            }
+
             let resp = try await c.createClaudeService(
                 imageRef: imageRef,
                 rwMounts: mounts,
                 env: env,
+                idleTimeoutSeconds: idleTimeoutSeconds,
                 serviceConfig: serviceConfig
             )
             serviceID = resp["service_id"] as? String

@@ -35,6 +35,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/tunnels", s.withAuth(s.handleTunnelsCreate))
 	mux.HandleFunc("DELETE /v1/tunnels/{tunnel_id}", s.withAuth(s.handleTunnelsDelete))
 
+	mux.HandleFunc("POST /v1/forwards", s.withAuth(s.handleForwardsCreate))
+	mux.HandleFunc("DELETE /v1/forwards/{forward_id}", s.withAuth(s.handleForwardsDelete))
+
+	mux.HandleFunc("GET /v1/skills", s.withAuth(s.handleSkillsList))
+	mux.HandleFunc("POST /v1/skills/discover", s.withAuth(s.handleSkillsDiscover))
+	mux.HandleFunc("POST /v1/skills/install", s.withAuth(s.handleSkillsInstall))
+	mux.HandleFunc("DELETE /v1/skills/{skill_name}", s.withAuth(s.handleSkillsDelete))
+
+	mux.HandleFunc("POST /v1/browser/runtime/ensure", s.withAuth(s.handleBrowserRuntimeEnsure))
+	mux.HandleFunc("POST /v1/browser/sessions/{session}/command", s.withAuth(s.handleBrowserCommand))
+
 	// ASP (v1: WebSocket)
 	mux.HandleFunc("GET /v1/services/{service_id}/chat", s.withAuth(s.handleServiceChatWS))
 
