@@ -148,6 +148,15 @@ def _mcp_server_names_from_config(v: Any) -> list[str]:
     return out
 
 
+def _normalize_mcp_servers(cfg: dict[str, Any]) -> None:
+    v = cfg.get("mcp_servers")
+    if not isinstance(v, dict):
+        return
+    servers = v.get("mcpServers")
+    if isinstance(servers, dict):
+        cfg["mcp_servers"] = servers
+
+
 def _expand_allowed_tools_all(cfg: dict[str, Any]) -> None:
     raw = cfg.get("allowed_tools")
     if not isinstance(raw, list):
@@ -258,6 +267,7 @@ def _normalize_options(cfg: dict[str, Any], share_dirs: list[str]) -> ClaudeAgen
     cfg = dict(cfg)
     cfg.setdefault("include_partial_messages", True)
     cfg.setdefault("permission_mode", "bypassPermissions")
+    _normalize_mcp_servers(cfg)
     _expand_allowed_tools_all(cfg)
     _normalize_setting_sources(cfg)
     if "allowed_tools" in cfg:

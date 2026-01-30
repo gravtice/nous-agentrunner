@@ -327,7 +327,10 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
   - key 仅允许字母/数字/下划线（且不允许数字开头），数量与 value 大小有上限
 - `service_config`：
   - 透传给容器内服务；对 `type="claude"`，会被解释为 Python Claude Agent SDK 的 `ClaudeAgentOptions`
-  - `mcp_servers`：支持 dict 或 string（string 作为文件路径，需位于 Share 白名单下）
+  - `mcp_servers`：
+    - 支持 dict（推荐）：直接写 `{ "<server_name>": { ... }, ... }`
+      - 兼容 Claude Code 配置格式：若 dict 顶层包含 `mcpServers`，`claude-agent-service` 会自动取其值作为 server 列表
+    - 支持 string（文件路径）：指向 Claude Code MCP config JSON（顶层应包含 `mcpServers`），路径需位于 Share 白名单下
   - `permission_mode` 可在会话中通过 ASP `permission_mode.set` 动态切换
 
 返回：
