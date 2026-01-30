@@ -1,6 +1,6 @@
 # ASMP：Tunnels 的 host_port 便捷接口（提案）
 
-> **Status**: Draft（未实现）  
+> **Status**: Implemented（已实现）  
 > **Last Updated**: 2026-01-30  
 > 本文档记录对 ASMP `/v1/tunnels` 的两个兼容性增强提案：**按 `host_port` 删除** 与 **只读查询**。目标是降低上层集成（例如 CoWork 的 Browser Panel / CDP 锁）对 `tunnel_id` 状态持久化与异常恢复的复杂度。
 
@@ -86,9 +86,8 @@
 - 抽出一个内部 helper：`findRunningTunnelByHostPort(hostPort) (*tunnelEntry, bool)`，并在内部做“stale 判定 + 清理”。
 - `DELETE by_host_port` 可复用现有 `DELETE by tunnel_id` 的核心逻辑（避免两套取消/清理路径）。
 
-（可选）能力发现：
+能力发现（已实现）：
 
-- 若需要让客户端显式探测是否支持该提案，可在 `GET /v1/system/status` 的 `capabilities` 中增加标记：
+- `GET /v1/system/status` 的 `capabilities`：
   - `tunnels_list=true`
   - `tunnels_by_host_port=true`
-
