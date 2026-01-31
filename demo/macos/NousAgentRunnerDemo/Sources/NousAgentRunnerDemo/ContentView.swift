@@ -189,11 +189,11 @@ struct ContentView: View {
         }
         """
 
-    @State private var systemPromptMode: SystemPromptMode = .custom
+    @State private var systemPromptMode: SystemPromptMode = .builtin
     @State private var systemPromptCustom = "You are a helpful agent."
     @State private var systemPromptAppend = ""
     @State private var permissionMode: PermissionMode = .bypassPermissions
-    @State private var model = ""
+    @State private var model = "claude-opus-4-5"
     @State private var rwMount = ""
     @State private var selectedWorkDirURL: URL?
     @State private var showWorkDirPicker = false
