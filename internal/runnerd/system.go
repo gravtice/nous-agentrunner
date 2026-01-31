@@ -45,7 +45,7 @@ func (s *Server) handleSystemPaths(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{
 		"default_temp_dir":  s.cfg.Paths.DefaultSharedTmpDir,
-		"runnerd_log":       filepath.Join(s.cfg.Paths.AppSupportDir, "runnerd.log"),
+		"runnerd_log":       filepath.Join(s.cfg.Paths.LogsDir, "runnerd.log"),
 		"lima_home_dir":     s.cfg.LimaHome,
 		"lima_instance_dir": limaInstanceDir,
 	})
