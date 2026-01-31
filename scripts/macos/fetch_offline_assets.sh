@@ -17,8 +17,11 @@ require_cmd() {
 require_cmd curl
 require_cmd awk
 require_cmd python3
-require_cmd virt-customize
-require_cmd virt-sparsify
+if command -v docker >/dev/null 2>&1; then
+  :
+else
+  fail "docker not found in PATH (required for qcow2 pre-bake)"
+fi
 
 mkdir -p "${ASSETS_DIR}"
 
@@ -54,9 +57,9 @@ VM_LINE="$(
 )"
 [ -n "${VM_LINE:-}" ] || fail "failed to parse arm64/aarch64 VM image from: ${DEBIAN_YAML}"
 VM_IMAGE_URL="${VM_LINE%% *}"
-VM_IMAGE_DIGEST="${VM_LINE#* }"
-if [ "${VM_IMAGE_DIGEST}" = "${VM_IMAGE_URL}" ]; then
-  VM_IMAGE_DIGEST=""
+VM_IMAGE_SOURCE_DIGEST="${VM_LINE#* }"
+if [ "${VM_IMAGE_SOURCE_DIGEST}" = "${VM_IMAGE_URL}" ]; then
+  VM_IMAGE_SOURCE_DIGEST=""
 fi
 
 NERDCTL_LINE="$(
@@ -81,8 +84,8 @@ if [ "${NERDCTL_DIGEST}" = "${NERDCTL_URL}" ]; then
 fi
 
 echo "VM image: ${VM_IMAGE_URL}"
-if [ -n "${VM_IMAGE_DIGEST}" ]; then
-  echo "VM digest: ${VM_IMAGE_DIGEST}"
+if [ -n "${VM_IMAGE_SOURCE_DIGEST}" ]; then
+  echo "VM digest: ${VM_IMAGE_SOURCE_DIGEST}"
 else
   echo "VM digest: (missing)"
 fi
@@ -93,7 +96,7 @@ else
   echo "nerdctl digest: (missing)"
 fi
 
-case "${VM_IMAGE_URL}${VM_IMAGE_DIGEST}${NERDCTL_URL}${NERDCTL_DIGEST}" in
+case "${VM_IMAGE_URL}${VM_IMAGE_SOURCE_DIGEST}${NERDCTL_URL}${NERDCTL_DIGEST}" in
   *$'\n'* | *$'\r'*)
     fail "parsed values contain invalid newline characters"
     ;;
@@ -128,6 +131,93 @@ print(f"{algo}:{h.hexdigest()}")
 PY
 }
 
+bake_vm_image() {
+  local input="$1"
+  local output="$2"
+
+  if [ "$(dirname "${input}")" != "${ASSETS_DIR}" ] || [ "$(dirname "${output}")" != "${ASSETS_DIR}" ]; then
+    fail "bake_vm_image expects input/output under ${ASSETS_DIR} (got: ${input}, ${output})"
+  fi
+
+  local baker_image="nous-offline-baker:bookworm-v2"
+  if ! docker image inspect "${baker_image}" >/dev/null 2>&1; then
+    echo "[bake] build ${baker_image} (libguestfs-tools)"
+    docker build -t "${baker_image}" - <<'EOF'
+FROM debian:bookworm-slim
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    ipxe-qemu \
+    libguestfs-tools \
+    linux-image-arm64 \
+  && rm -rf /var/lib/apt/lists/*
+RUN ln -sf /usr/lib/ipxe/qemu/efi-virtio.rom /usr/share/qemu/efi-virtio.rom
+EOF
+  fi
+
+  local tmp_script
+  tmp_script="$(mktemp "${ASSETS_DIR}/.nous-vm-bake.XXXXXX")"
+  trap 'rm -f "${tmp_script}"' RETURN
+  cat >"${tmp_script}" <<'SH'
+#!/bin/sh
+set -eux
+
+pkgs=""
+if [ ! -e /usr/sbin/iptables ]; then
+	pkgs="${pkgs} iptables"
+fi
+if ! command -v rsync >/dev/null 2>&1; then
+	pkgs="${pkgs} rsync"
+fi
+
+if [ -n "${pkgs}" ]; then
+	DEBIAN_FRONTEND=noninteractive
+	export DEBIAN_FRONTEND
+	apt-get update
+	# shellcheck disable=SC2086
+	apt-get install -y --no-upgrade --no-install-recommends -q ${pkgs}
+fi
+
+apt-get clean
+rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+rm -rf /tmp/* /var/tmp/*
+SH
+
+  local tmp_out
+  local tmp_out_base_path
+  tmp_out_base_path="$(mktemp "${ASSETS_DIR}/.nous-vm-image.XXXXXX")"
+  tmp_out="${tmp_out_base_path}.qcow2"
+  rm -f "${tmp_out_base_path}"
+  rm -f "${tmp_out}"
+  trap 'rm -f "${tmp_script}" "${tmp_out_base_path}" "${tmp_out}"' RETURN
+
+  local input_base
+  input_base="$(basename "${input}")"
+  local tmp_script_base
+  tmp_script_base="$(basename "${tmp_script}")"
+  local tmp_out_file
+  tmp_out_file="$(basename "${tmp_out}")"
+
+  echo "[bake] virt-customize ${input_base}"
+  docker run --rm \
+    -e LIBGUESTFS_BACKEND_SETTINGS=force_tcg \
+    -v "${ASSETS_DIR}:/assets" \
+    "${baker_image}" \
+    virt-customize -a "/assets/${input_base}" --run "/assets/${tmp_script_base}"
+
+  echo "[bake] virt-sparsify ${input_base} -> $(basename "${output}")"
+  docker run --rm \
+    -e LIBGUESTFS_BACKEND_SETTINGS=force_tcg \
+    -v "${ASSETS_DIR}:/assets" \
+    "${baker_image}" \
+    virt-sparsify --compress "/assets/${input_base}" "/assets/${tmp_out_file}"
+
+  rm -f "${output}"
+  mv -f "${tmp_out}" "${output}"
+  trap - RETURN
+  rm -f "${tmp_script}"
+}
+
 digest_algo() {
   local digest="$1"
   if [ -z "${digest}" ]; then
@@ -156,57 +246,29 @@ verify_digest() {
   fi
 }
 
-bake_vm_image() {
-  local input="$1"
-  local output="$2"
-
-  local tmp_script
-  tmp_script="$(mktemp "${TMPDIR:-/tmp}/nous-vm-bake.XXXXXX")"
-  cat >"${tmp_script}" <<'SH'
-#!/bin/sh
-set -eux
-
-pkgs=""
-if [ ! -e /usr/sbin/iptables ]; then
-	pkgs="${pkgs} iptables"
-fi
-if ! command -v rsync >/dev/null 2>&1; then
-	pkgs="${pkgs} rsync"
-fi
-
-if [ -n "${pkgs}" ]; then
-	DEBIAN_FRONTEND=noninteractive
-	export DEBIAN_FRONTEND
-	apt-get update
-	# shellcheck disable=SC2086
-	apt-get install -y --no-upgrade --no-install-recommends -q ${pkgs}
-fi
-
-apt-get clean
-rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
-rm -rf /tmp/* /var/tmp/*
-SH
-
-  virt-customize -a "${input}" --run "${tmp_script}"
-  rm -f "${tmp_script}"
-
-  local tmp_out
-  tmp_out="$(mktemp "${TMPDIR:-/tmp}/nous-vm-image.XXXXXX.qcow2")"
-  rm -f "${tmp_out}"
-  virt-sparsify --compress "${input}" "${tmp_out}"
-  rm -f "${output}"
-  mv -f "${tmp_out}" "${output}"
-}
-
 VM_IMAGE_PATH="${ASSETS_DIR}/${VM_IMAGE_FILE}"
 VM_IMAGE_DOWNLOAD_PATH="${ASSETS_DIR}/${VM_IMAGE_FILE}.download"
 
 if [ -f "${VM_IMAGE_PATH}" ]; then
   echo "[1/2] VM image already present: ${VM_IMAGE_FILE}"
+  if [ -n "${VM_IMAGE_SOURCE_DIGEST}" ]; then
+    source_algo="$(digest_algo "${VM_IMAGE_SOURCE_DIGEST}" | tr '[:upper:]' '[:lower:]')"
+    existing_digest="$(sha_digest "${source_algo}" "${VM_IMAGE_PATH}")"
+    expected_hex="${VM_IMAGE_SOURCE_DIGEST#*:}"
+    expected_norm="${source_algo}:${expected_hex}"
+    if [ "${existing_digest}" = "${expected_norm}" ]; then
+      echo "[1/2] bake existing VM image (preinstall iptables, rsync): ${VM_IMAGE_FILE}"
+      bake_vm_image "${VM_IMAGE_PATH}" "${VM_IMAGE_PATH}"
+    fi
+  fi
 else
-  echo "[1/2] download VM image (aarch64): ${VM_IMAGE_FILE}"
-  curl -fL -C - -o "${VM_IMAGE_DOWNLOAD_PATH}" "${VM_IMAGE_URL}"
-  verify_digest "${VM_IMAGE_DOWNLOAD_PATH}" "${VM_IMAGE_DIGEST}"
+  if [ ! -f "${VM_IMAGE_DOWNLOAD_PATH}" ]; then
+    echo "[1/2] download VM image (aarch64): ${VM_IMAGE_FILE}"
+    curl -fL -C - -o "${VM_IMAGE_DOWNLOAD_PATH}" "${VM_IMAGE_URL}"
+  else
+    echo "[1/2] VM image download present: $(basename "${VM_IMAGE_DOWNLOAD_PATH}")"
+  fi
+  verify_digest "${VM_IMAGE_DOWNLOAD_PATH}" "${VM_IMAGE_SOURCE_DIGEST}"
 
   echo "[1/2] bake VM image (preinstall iptables, rsync): ${VM_IMAGE_FILE}"
   bake_vm_image "${VM_IMAGE_DOWNLOAD_PATH}" "${VM_IMAGE_PATH}"
