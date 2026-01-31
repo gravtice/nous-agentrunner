@@ -144,7 +144,7 @@ create_minimal_app_from_swiftpm() {
   local nous_version="0.1.0"
   local version_file="${ROOT_DIR}/VERSION"
   if [ -f "${version_file}" ]; then
-    nous_version="$(awk -F= '$1=="NOUS_VERSION"{print $2; exit}' "${version_file}" | tr -d ' \t\r\"')"
+    nous_version="$(awk -F= '$1=="NOUS_AGENT_RUNNER_VERSION"{print $2; exit}' "${version_file}" | tr -d ' \t\r\"')"
     if [ -z "${nous_version}" ]; then
       nous_version="0.1.0"
     fi

@@ -86,7 +86,7 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 
 返回：
 
-- `version`：Runner 版本（当前为 `"0.1.0"`）
+- `version`：Runner 版本（当前为 `"0.2.4"`）
 - `vm.state`：`running/stopped/not_created/unknown`（或其它小写状态；来自 Lima `status`）
 - `vm.restart_required`：Share 变更后会置 `true`
 - `services_running`：当前 Runner 记录的 `running` Service 数
@@ -95,7 +95,7 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.2.4",
   "vm": {
     "state": "running",
     "restart_required": false,
@@ -188,7 +188,7 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 请求：
 
 ```json
-{"ref":"docker.io/gravtice/nous-claude-agent-service:0.1.0"}
+{"ref":"docker.io/gravtice/nous-claude-agent-service:0.2.4"}
 ```
 
 约束：
@@ -225,7 +225,7 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 返回：
 
 ```json
-{"images":["docker.io/gravtice/nous-claude-agent-service:0.1.0","local/xxx:tag"]}
+{"images":["docker.io/gravtice/nous-claude-agent-service:0.2.4","local/xxx:tag"]}
 ```
 
 ---
@@ -252,7 +252,7 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
 ```json
 {
   "type": "claude",
-  "image_ref": "docker.io/gravtice/nous-claude-agent-service:0.1.0",
+  "image_ref": "docker.io/gravtice/nous-claude-agent-service:0.2.4",
   "resources": {"cpu_cores": 2, "memory_mb": 1024, "pids": 256},
   "rw_mounts": ["/Users/alice/Work/project/output"],
   "env": {"ANTHROPIC_AUTH_TOKEN": "..."},
@@ -323,7 +323,12 @@ Swift 集成可直接参考：`sdk/swift/NousAgentRunnerKit/Sources/NousAgentRun
   - 必须位于某个 Share 白名单目录下
   - Runner 会在 Host 上创建该目录（`mkdir -p`）并再次做 canonical 校验
 - `env`：
-  - key 不允许以 `NOUS_` 开头（保留给 Runner/Service 注入）
+  - key 不允许以 `NOUS_RUNNER_` 开头（保留给 Runner/Service 注入）
+  - Runner 注入的变量（容器内可见）：
+    - `NOUS_RUNNER_SERVICE_PORT`
+    - `NOUS_RUNNER_SERVICE_CONFIG_B64`
+    - `NOUS_RUNNER_SHARE_DIRS_B64`
+    - `NOUS_RUNNER_MAX_INLINE_BYTES`
   - key 仅允许字母/数字/下划线（且不允许数字开头），数量与 value 大小有上限
 - `service_config`：
   - 透传给容器内服务；对 `type="claude"`，会被解释为 Python Claude Agent SDK 的 `ClaudeAgentOptions`

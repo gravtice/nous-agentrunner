@@ -154,10 +154,10 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 		args = append(args, "-e", "HOME=/tmp")
 	}
 	args = append(args,
-		"-e", fmt.Sprintf("NOUS_SERVICE_PORT=%d", port),
-		"-e", fmt.Sprintf("NOUS_SERVICE_CONFIG_B64=%s", req.ServiceConfigB64),
-		"-e", fmt.Sprintf("NOUS_SHARE_DIRS_B64=%s", shareDirsB64),
-		"-e", fmt.Sprintf("NOUS_MAX_INLINE_BYTES=%d", req.MaxInlineBytes),
+		"-e", fmt.Sprintf("NOUS_RUNNER_SERVICE_PORT=%d", port),
+		"-e", fmt.Sprintf("NOUS_RUNNER_SERVICE_CONFIG_B64=%s", req.ServiceConfigB64),
+		"-e", fmt.Sprintf("NOUS_RUNNER_SHARE_DIRS_B64=%s", shareDirsB64),
+		"-e", fmt.Sprintf("NOUS_RUNNER_MAX_INLINE_BYTES=%d", req.MaxInlineBytes),
 	)
 
 	if len(req.Env) > 0 {
@@ -316,7 +316,7 @@ func validateServiceEnv(in map[string]string) error {
 		if key == "" {
 			return fmt.Errorf("env var name is empty")
 		}
-		if strings.HasPrefix(key, "NOUS_") {
+		if isReservedServiceEnvKey(key) {
 			return fmt.Errorf("env var name is reserved: %q", key)
 		}
 		if !isValidEnvKey(key) {
@@ -330,6 +330,10 @@ func validateServiceEnv(in map[string]string) error {
 		}
 	}
 	return nil
+}
+
+func isReservedServiceEnvKey(key string) bool {
+	return strings.HasPrefix(key, "NOUS_RUNNER_")
 }
 
 func isValidEnvKey(key string) bool {
