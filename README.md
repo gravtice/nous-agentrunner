@@ -7,7 +7,7 @@ Nous Agent Runner is a lightweight runtime that lets you integrate AI agents (Cl
 ```swift
 // Create an AI agent and start chatting
 let service = try await client.createClaudeService(
-    imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.3",
+    imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.4",
     rwMounts: ["/Users/alice/Projects"],
     serviceConfig: ["system_prompt": "You are a helpful coding assistant"]
 )
@@ -60,6 +60,12 @@ dependencies: [
 ]
 ```
 
+### 2b. Add TypeScript SDK to Your App (Node/Electron)
+
+```bash
+npm install nous-agent-runner-sdk
+```
+
 ### 3. Integrate in 3 Steps
 
 ```swift
@@ -73,7 +79,7 @@ let runtime = try await daemon.ensureRunning()
 let client = NousAgentRunnerClient(runtime: runtime)
 let service = try await client.createService(
     type: "claude",
-    imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.3",
+    imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.4",
     config: ClaudeServiceConfig(
         systemPrompt: "You are a helpful assistant",
         allowedTools: ["Read", "Write", "Bash"]
@@ -92,6 +98,18 @@ for try await message in ws.messages {
         break
     }
 }
+```
+
+Node/Electron usage (main process):
+
+```ts
+import { NousAgentRunnerDaemon, NousAgentRunnerClient } from "nous-agent-runner-sdk";
+
+const daemon = new NousAgentRunnerDaemon();
+const runtime = await daemon.ensureRunning();
+const client = new NousAgentRunnerClient(runtime);
+
+console.log(await client.getSystemStatus());
 ```
 
 ## Architecture
@@ -151,7 +169,7 @@ WebSocket protocol for agent interaction:
 | `agent.ask` | Agent → Client | Agent needs user input |
 | `done` | Agent → Client | Request complete |
 
-Full protocol documentation: [`docs/v0.2.0/ASMP.md`](docs/v0.2.0/ASMP.md) | [`docs/v0.2.0/ASP.md`](docs/v0.2.0/ASP.md)
+Full protocol documentation: [`docs/ASMP.md`](docs/ASMP.md) | [`docs/ASP.md`](docs/ASP.md)
 
 ## Distribution
 
@@ -169,14 +187,31 @@ Package your app with the runtime embedded:
 
 The packaged DMG contains everything needed — users don't need to install anything separately.
 
+Note: macOS “Files and Folders” / “Full Disk Access” grants are tied to the app's code signature.
+If you repackage with ad-hoc signing, the system may prompt again. To keep grants stable across updates,
+sign with a real identity (set `NOUS_CODESIGN_IDENTITY` when running `./scripts/macos/package_dmg.sh`).
+
 ## Configuration
 
 Configuration is file-based (zero CLI parameters):
 
 ```bash
-# Priority: .env.local > .env.production > .env.development
+# Priority: .env.local > .env.production > .env.development > .env.test
 ~/Library/Application Support/NousAgentRunner/<instance_id>/.env.local
 ```
+
+Runtime paths are per-instance (based on `<instance_id>`):
+
+- Config + state (macOS): `~/Library/Application Support/NousAgentRunner/<instance_id>/`
+  - Config: `.env.local`, `.env.production`, `.env.development`, `.env.test`
+  - Auth token: `token` (0600)
+  - Runtime discovery: `runtime.json` (listen addr/port, pid, started_at)
+- Logs (macOS): `~/Library/Logs/NousAgentRunner/<instance_id>/runnerd.log`
+- Cache/temp (macOS): `~/Library/Caches/NousAgentRunner/`
+  - Default temp dir (shared): `~/Library/Caches/NousAgentRunner/<instance_id>/SharedTmp/`
+  - Lima home (shared across instances): `~/Library/Caches/NousAgentRunner/lima/`
+
+You can query the exact paths at runtime via `GET /v1/system/paths`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -207,6 +242,7 @@ Configuration is file-based (zero CLI parameters):
 │   ├── nous-agent-runnerd/      # Host daemon (Go)
 │   └── nous-guest-runnerd/      # Guest daemon (Go)
 ├── sdk/swift/NousAgentRunnerKit/ # Swift SDK
+├── sdk/typescript/nous-agent-runner-sdk/ # TypeScript SDK (Node/Electron)
 ├── services/claude-agent-service/ # Claude Agent Service (Python)
 ├── demo/macos/NousAgentRunnerDemo/ # Example SwiftUI app
 ├── docs/                         # Protocol specifications
@@ -216,8 +252,8 @@ Configuration is file-based (zero CLI parameters):
 ## Documentation
 
 - [Implementation Plan](docs/v0.1.0/IMPLEMENTATION_PLAN.md) — Architecture design and rationale
-- [ASMP Protocol](docs/v0.2.0/ASMP.md) — Control plane API reference
-- [ASP Protocol](docs/v0.2.0/ASP.md) — Data plane WebSocket reference
+- [ASMP Protocol](docs/ASMP.md) — Control plane API reference
+- [ASP Protocol](docs/ASP.md) — Data plane WebSocket reference
 - [Building Guide](docs/v0.1.0/BUILDING.md) — Build and packaging instructions
 - [Demo App README](demo/macos/NousAgentRunnerDemo/README.md) — Integration example
 
