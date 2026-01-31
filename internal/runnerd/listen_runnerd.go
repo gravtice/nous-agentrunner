@@ -1,12 +1,14 @@
 package runnerd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -28,9 +30,35 @@ func runnerdResponding(addr string, port int, token string) bool {
 	if err != nil {
 		return false
 	}
-	_, _ = io.Copy(io.Discard, resp.Body)
-	_ = resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return false
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return false
+	}
+
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 16<<10))
+	if err != nil {
+		return false
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(b, &obj); err != nil {
+		return false
+	}
+	protocols, ok := obj["protocols"].(map[string]any)
+	if !ok {
+		return false
+	}
+	if _, ok := protocols["asmp"]; !ok {
+		return false
+	}
+	if _, ok := obj["vm"].(map[string]any); !ok {
+		return false
+	}
+	return true
 }
 
 func listenEphemeralDistinct(addr string, exclude int) (net.Listener, int, error) {
