@@ -60,6 +60,12 @@ dependencies: [
 ]
 ```
 
+### 2b. Add TypeScript SDK to Your App (Node/Electron)
+
+```bash
+npm install nous-agent-runner-sdk
+```
+
 ### 3. Integrate in 3 Steps
 
 ```swift
@@ -92,6 +98,18 @@ for try await message in ws.messages {
         break
     }
 }
+```
+
+Node/Electron usage (main process):
+
+```ts
+import { NousAgentRunnerDaemon, NousAgentRunnerClient } from "nous-agent-runner-sdk";
+
+const daemon = new NousAgentRunnerDaemon();
+const runtime = await daemon.ensureRunning();
+const client = new NousAgentRunnerClient(runtime);
+
+console.log(await client.getSystemStatus());
 ```
 
 ## Architecture
@@ -224,6 +242,7 @@ You can query the exact paths at runtime via `GET /v1/system/paths`.
 │   ├── nous-agent-runnerd/      # Host daemon (Go)
 │   └── nous-guest-runnerd/      # Guest daemon (Go)
 ├── sdk/swift/NousAgentRunnerKit/ # Swift SDK
+├── sdk/typescript/nous-agent-runner-sdk/ # TypeScript SDK (Node/Electron)
 ├── services/claude-agent-service/ # Claude Agent Service (Python)
 ├── demo/macos/NousAgentRunnerDemo/ # Example SwiftUI app
 ├── docs/                         # Protocol specifications
