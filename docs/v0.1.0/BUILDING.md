@@ -12,7 +12,7 @@
 
 版本：
 
-- `VERSION` 是打包/离线资产的单一事实来源（`NOUS_VERSION` / `NOUS_VM_VERSION`）。
+- `VERSION` 是打包/离线资产的单一事实来源（`NOUS_AGENT_RUNNER_VERSION` / `NOUS_VM_VERSION`）。
 - Lima 通过 submodule `references/lima` 固定到 tag `v2.0.3`。
 
 ## 2. 构建二进制
@@ -31,7 +31,7 @@
 
 在仓库根目录执行：
 
-`docker build -f services/claude-agent-service/Dockerfile -t docker.io/gravtice/nous-claude-agent-service:$(awk -F= '$1=="NOUS_VERSION"{print $2; exit}' VERSION) .`
+`docker build -f services/claude-agent-service/Dockerfile -t docker.io/gravtice/nous-claude-agent-service:$(awk -F= '$1=="NOUS_AGENT_RUNNER_VERSION"{print $2; exit}' VERSION) .`
 
 说明：
 

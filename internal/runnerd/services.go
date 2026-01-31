@@ -678,7 +678,7 @@ func validateServiceEnv(in map[string]string) (map[string]string, error) {
 		if key == "" {
 			return nil, fmt.Errorf("env var name is empty")
 		}
-		if strings.HasPrefix(key, "NOUS_") {
+		if isReservedServiceEnvKey(key) {
 			return nil, fmt.Errorf("env var name is reserved: %q", key)
 		}
 		if !isValidEnvKey(key) {
@@ -696,6 +696,10 @@ func validateServiceEnv(in map[string]string) (map[string]string, error) {
 		out[key] = v
 	}
 	return out, nil
+}
+
+func isReservedServiceEnvKey(key string) bool {
+	return strings.HasPrefix(key, "NOUS_RUNNER_")
 }
 
 func isValidEnvKey(key string) bool {

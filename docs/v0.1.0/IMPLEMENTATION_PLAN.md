@@ -272,7 +272,7 @@ v1 关键配置项（示例）：
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.2.4",
   "vm": {"state": "running"},
   "services_running": 2
 }
@@ -314,7 +314,7 @@ v1 关键配置项（示例）：
 请求：
 
 ```json
-{"ref":"docker.io/gravtice/nous-claude-agent-service:0.1.0"}
+{"ref":"docker.io/gravtice/nous-claude-agent-service:0.2.4"}
 ```
 
 约束：
@@ -336,7 +336,7 @@ v1 关键配置项（示例）：
 ```json
 {
   "type": "claude",
-  "image_ref": "docker.io/gravtice/nous-claude-agent-service:0.1.0",
+  "image_ref": "docker.io/gravtice/nous-claude-agent-service:0.2.4",
   "resources": {"cpu_cores": 2, "memory_mb": 1024, "pids": 256},
   "rw_mounts": ["/Users/alice/Work/project/output"],
   "service_config": {

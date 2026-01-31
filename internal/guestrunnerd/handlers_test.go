@@ -30,8 +30,8 @@ case "$cmd" in
     for a in "$@"; do
       if [ "$prev" = "-e" ]; then
         case "$a" in
-          NOUS_SERVICE_PORT=*)
-            port="${a#NOUS_SERVICE_PORT=}"
+          NOUS_RUNNER_SERVICE_PORT=*)
+            port="${a#NOUS_RUNNER_SERVICE_PORT=}"
             ;;
         esac
       fi
@@ -187,7 +187,7 @@ func TestM2_HandleServiceCreate_BuildsMounts(t *testing.T) {
 	if !strings.Contains(log, "type=bind,src="+rwDir+",dst="+rwDir+",rw") {
 		t.Fatalf("expected rw mount in log, got:\n%s", log)
 	}
-	if !strings.Contains(log, "-e NOUS_MAX_INLINE_BYTES=1234") {
+	if !strings.Contains(log, "-e NOUS_RUNNER_MAX_INLINE_BYTES=1234") {
 		t.Fatalf("expected max bytes env in log, got:\n%s", log)
 	}
 	if !strings.Contains(log, "-e ANTHROPIC_API_KEY=shh") {
