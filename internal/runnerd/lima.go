@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -134,6 +136,12 @@ func (s *Server) ensureVMRunning(ctx context.Context) error {
 		return err
 	}
 
+	if state, err := s.limaInstanceState(ctx); err == nil && state != "running" {
+		if err := s.ensureGuestForwardPortAvailable(); err != nil {
+			return err
+		}
+	}
+
 	assets, err := s.prepareOfflineAssets()
 	if err != nil {
 		return err
@@ -198,6 +206,43 @@ func (s *Server) ensureVMRunning(ctx context.Context) error {
 		return err2
 	}
 	return err
+}
+
+func (s *Server) ensureGuestForwardPortAvailable() error {
+	if s.cfg.GuestForwardPort <= 0 || s.cfg.GuestForwardPort > 65535 {
+		return fmt.Errorf("invalid NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT %d", s.cfg.GuestForwardPort)
+	}
+	addr := fmt.Sprintf("127.0.0.1:%d", s.cfg.GuestForwardPort)
+	ln, err := net.Listen("tcp", addr)
+	if err == nil {
+		_ = ln.Close()
+		return nil
+	}
+	if !isAddrInUseError(err) {
+		return err
+	}
+
+	var newPort int
+	for range 16 {
+		p, err := pickFreeLocalPort()
+		if err != nil {
+			return err
+		}
+		if p != s.cfg.ListenPort {
+			newPort = p
+			break
+		}
+	}
+	if newPort == 0 {
+		return fmt.Errorf("failed to allocate guest forward port distinct from NOUS_AGENT_RUNNER_PORT (%d)", s.cfg.ListenPort)
+	}
+	if err := persistEnvLocalUpdates(s.cfg.Paths, map[string]string{
+		"NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT": strconv.Itoa(newPort),
+	}); err != nil {
+		return err
+	}
+	s.cfg.GuestForwardPort = newPort
+	return nil
 }
 
 func needsRecreateForGuestChannel(instanceYAMLPath string, cfg Config) bool {

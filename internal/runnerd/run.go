@@ -2,7 +2,6 @@ package runnerd
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -20,22 +19,28 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	go s.runIdleServiceReaper(ctx)
 	if err := s.startVsockTunnelServer(ctx); err != nil {
 		return err
 	}
 
-	addr := fmt.Sprintf("%s:%d", cfg.ListenAddr, cfg.ListenPort)
-	ln, err := net.Listen("tcp", addr)
+	ln, cfg, alreadyRunning, err := listenRunnerdHTTP(cfg)
 	if err != nil {
 		return err
 	}
+	if alreadyRunning {
+		log.Printf("nous-agent-runnerd already running on http://%s:%d", cfg.ListenAddr, cfg.ListenPort)
+		return nil
+	}
 	if tcp, ok := ln.Addr().(*net.TCPAddr); ok {
 		cfg.ListenPort = tcp.Port
+		s.cfg.ListenPort = tcp.Port
 	}
 
 	writeRuntimeFile(cfg)
 
+	go s.runIdleServiceReaper(ctx)
+
+	addr := ln.Addr().String()
 	srv := &http.Server{
 		Addr:    addr,
 		Handler: s.Handler(),

@@ -35,7 +35,7 @@ type Config struct {
 	NoProxy           string
 	GuestBinaryPath   string
 
-	GuestRunnerPort int // guest-runnerd inside VM
+	GuestRunnerPort  int // guest-runnerd inside VM
 	GuestForwardPort int // host port forwarded to guest-runnerd
 
 	MaxInlineBytes int64
@@ -172,12 +172,7 @@ func LoadConfig() (Config, error) {
 		return Config{}, err
 	}
 
-	loadedEnvPath, env, err := envfile.LoadFirst([]string{
-		filepath.Join(paths.AppSupportDir, ".env.local"),
-		filepath.Join(paths.AppSupportDir, ".env.production"),
-		filepath.Join(paths.AppSupportDir, ".env.development"),
-		filepath.Join(paths.AppSupportDir, ".env.test"),
-	})
+	loadedEnvPath, env, err := envfile.LoadFirst(envCandidatePaths(paths.AppSupportDir))
 	if err != nil {
 		return Config{}, fmt.Errorf("load env: %w", err)
 	}
