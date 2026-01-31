@@ -137,11 +137,15 @@ func findInfoPlistNearExecutable(exe string) string {
 }
 
 func deriveInstanceIDFromBundleID(bundleID string) string {
-	bundleID = strings.ToLower(strings.TrimSpace(bundleID))
-	if bundleID == "" {
+	return deriveShortHash(bundleID)
+}
+
+func deriveShortHash(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(bundleID))
+	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])[:12]
 }
 
@@ -160,6 +164,26 @@ func isSafeInstanceID(s string) bool {
 		}
 	}
 	return true
+}
+
+func deriveSafeLimaInstanceName(limaHome, instanceID string) string {
+	name := "nous-" + instanceID
+	if runtime.GOOS != "darwin" || limaHome == "" {
+		return name
+	}
+
+	// Lima uses AF_UNIX sockets under $LIMA_HOME/<instance>/.
+	// On darwin, the path length is limited (~104 bytes incl. NUL).
+	const unixPathMax = 104
+	const probeSock = "default_ep.sock"
+	if len(filepath.Join(limaHome, name, probeSock)) < unixPathMax {
+		return name
+	}
+
+	if short := deriveShortHash(instanceID); short != "" {
+		return "nous-" + short
+	}
+	return "nous-default"
 }
 
 func LoadConfig() (Config, error) {
@@ -328,7 +352,7 @@ func LoadConfig() (Config, error) {
 	// for UNIX_PATH_MAX (~104 bytes). Keep LIMA_HOME shared across instances to avoid repeating
 	// <instance_id> in the socket path.
 	limaHome := filepath.Join(filepath.Dir(paths.CachesDir), "lima")
-	limaInstanceName := "nous-" + instanceID
+	limaInstanceName := deriveSafeLimaInstanceName(limaHome, instanceID)
 	if err := os.MkdirAll(limaHome, 0o700); err != nil {
 		return Config{}, err
 	}
