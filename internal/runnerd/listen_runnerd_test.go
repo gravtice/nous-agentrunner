@@ -80,8 +80,9 @@ func TestListenRunnerdHTTP_AlreadyRunning(t *testing.T) {
 			return
 		}
 		if r.URL.Path == "/v1/system/status" {
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("{}"))
+			_, _ = w.Write([]byte(`{"protocols":{"asmp":1},"vm":{}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
