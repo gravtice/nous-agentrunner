@@ -169,7 +169,7 @@ WebSocket protocol for agent interaction:
 | `agent.ask` | Agent → Client | Agent needs user input |
 | `done` | Agent → Client | Request complete |
 
-Full protocol documentation: [`docs/v0.2.0/ASMP.md`](docs/v0.2.0/ASMP.md) | [`docs/v0.2.0/ASP.md`](docs/v0.2.0/ASP.md)
+Full protocol documentation: [`docs/ASMP.md`](docs/ASMP.md) | [`docs/ASP.md`](docs/ASP.md)
 
 ## Distribution
 
@@ -252,8 +252,8 @@ You can query the exact paths at runtime via `GET /v1/system/paths`.
 ## Documentation
 
 - [Implementation Plan](docs/v0.1.0/IMPLEMENTATION_PLAN.md) — Architecture design and rationale
-- [ASMP Protocol](docs/v0.2.0/ASMP.md) — Control plane API reference
-- [ASP Protocol](docs/v0.2.0/ASP.md) — Data plane WebSocket reference
+- [ASMP Protocol](docs/ASMP.md) — Control plane API reference
+- [ASP Protocol](docs/ASP.md) — Data plane WebSocket reference
 - [Building Guide](docs/v0.1.0/BUILDING.md) — Build and packaging instructions
 - [Demo App README](demo/macos/NousAgentRunnerDemo/README.md) — Integration example
 
