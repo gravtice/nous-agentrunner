@@ -8,7 +8,7 @@
 
 ## 1. 背景与问题
 
-现状（以 `docs/v0.1.0/ASMP.md` 与当前实现为准）：
+现状（以 `docs/ASMP.md` 与当前实现为准）：
 
 - 创建：`POST /v1/tunnels`（以 `host_port` 做幂等键）返回 `tunnel_id/guest_port`。
 - 删除：仅支持 `DELETE /v1/tunnels/{tunnel_id}`。

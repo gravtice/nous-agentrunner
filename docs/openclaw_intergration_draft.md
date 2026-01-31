@@ -6,8 +6,8 @@
 
 - OpenClaw 源码：`temp/openclaw`（分支 `main`，commit `9688454a30e618e878ca795fbe46da58b2e2e9d3`）
 - Nous Agent Runner（本仓库）协议：
-  - ASMP：`docs/v0.1.0/ASMP.md`（全量；增量见 `docs/v0.2.0/ASMP.md`、`docs/v0.3.0/ASMP.md`）
-  - ASP：`docs/v0.1.0/ASP.md`（全量；增量见 `docs/v0.2.0/ASP.md`）
+  - ASMP：`docs/ASMP.md`
+  - ASP：`docs/ASP.md`
 - TypeScript SDK（本仓库）：
   - npm：`nous-agent-runner-sdk`（Node/Electron main process）
   - 源码：`sdk/typescript/nous-agent-runner-sdk/`
@@ -40,9 +40,9 @@ Nous Agent Runner 对外提供两层接口：
 
 - ASMP（HTTP 控制面）：创建/启动/停止/删除 service，管理 shares/images
   - 运行时发现：零参数（`runtime.json/.env.* + token`），且 TS SDK 已内置（无需插件自己读文件）
-  - 创建 service：`POST /v1/services`（目前 v1 只支持 `type="claude"`）`docs/v0.1.0/ASMP.md`
+  - 创建 service：`POST /v1/services`（目前 v1 只支持 `type="claude"`）`docs/ASMP.md`
 - ASP（WebSocket 数据面）：对某个 `service_id` 做流式对话
-  - `ws://127.0.0.1:<port>/v1/services/{service_id}/chat` `docs/v0.1.0/ASP.md`
+  - `ws://127.0.0.1:<port>/v1/services/{service_id}/chat` `docs/ASP.md`
   - 支持文本 + 文件（path/bytes）输入；输出 `response.delta`/`response.final`/`done`
 
 对 OpenClaw 的关键增益在于：**把工具执行与文件读写放到隔离域**，且受 Share 白名单与 rw_mounts 约束；同时保留 OpenClaw 原有 channel/记忆/会话编排能力。
@@ -72,7 +72,7 @@ PoC 阶段建议 **每次调用创建一个 service，跑完即删除**：
 当 PoC 跑通后，再做复用以降低开销：
 
 - 以 OpenClaw `sessionKey` 作为 key，维护 `sessionKey -> service_id` 映射
-- ASP 限制：同一 `service_id` 同时只允许一条 WS（`docs/v0.1.0/ASP.md`）
+- ASP 限制：同一 `service_id` 同时只允许一条 WS（`docs/ASP.md`）
   - 对每个 `service_id` 做互斥锁/队列，避免并发输入
   - 提供 `/nous reset` 触发重新创建（或 `stop`/`resume`）
 - 失败策略：WS 断开/错误码 fatal 时，丢弃并重建 service
