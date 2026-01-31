@@ -174,9 +174,22 @@ The packaged DMG contains everything needed — users don't need to install anyt
 Configuration is file-based (zero CLI parameters):
 
 ```bash
-# Priority: .env.local > .env.production > .env.development
+# Priority: .env.local > .env.production > .env.development > .env.test
 ~/Library/Application Support/NousAgentRunner/<instance_id>/.env.local
 ```
+
+Runtime paths are per-instance (based on `<instance_id>`):
+
+- Config + state (macOS): `~/Library/Application Support/NousAgentRunner/<instance_id>/`
+  - Config: `.env.local`, `.env.production`, `.env.development`, `.env.test`
+  - Auth token: `token` (0600)
+  - Runtime discovery: `runtime.json` (listen addr/port, pid, started_at)
+- Logs (macOS): `~/Library/Logs/NousAgentRunner/<instance_id>/runnerd.log`
+- Cache/temp (macOS): `~/Library/Caches/NousAgentRunner/`
+  - Default temp dir (shared): `~/Library/Caches/NousAgentRunner/<instance_id>/SharedTmp/`
+  - Lima home (shared across instances): `~/Library/Caches/NousAgentRunner/lima/`
+
+You can query the exact paths at runtime via `GET /v1/system/paths`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
