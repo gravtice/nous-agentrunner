@@ -169,6 +169,10 @@ Package your app with the runtime embedded:
 
 The packaged DMG contains everything needed — users don't need to install anything separately.
 
+Note: macOS “Files and Folders” / “Full Disk Access” grants are tied to the app's code signature.
+If you repackage with ad-hoc signing, the system may prompt again. To keep grants stable across updates,
+sign with a real identity (set `NOUS_CODESIGN_IDENTITY` when running `./scripts/macos/package_dmg.sh`).
+
 ## Configuration
 
 Configuration is file-based (zero CLI parameters):
