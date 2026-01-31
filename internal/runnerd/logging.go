@@ -13,7 +13,7 @@ func setupLogging(cfg Config) {
 	if runnerdLogFile != nil {
 		return
 	}
-	path := filepath.Join(cfg.Paths.AppSupportDir, "runnerd.log")
+	path := filepath.Join(cfg.Paths.LogsDir, "runnerd.log")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return

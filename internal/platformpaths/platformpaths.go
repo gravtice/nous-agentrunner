@@ -10,6 +10,7 @@ import (
 type Paths struct {
 	InstanceID          string
 	AppSupportDir       string
+	LogsDir             string
 	CachesDir           string
 	DefaultSharedTmpDir string
 }
@@ -26,10 +27,12 @@ func Resolve(instanceID string) (Paths, error) {
 	switch runtime.GOOS {
 	case "darwin":
 		appSupport := filepath.Join(home, "Library", "Application Support", "NousAgentRunner", instanceID)
+		logs := filepath.Join(home, "Library", "Logs", "NousAgentRunner", instanceID)
 		caches := filepath.Join(home, "Library", "Caches", "NousAgentRunner", instanceID)
 		return Paths{
 			InstanceID:          instanceID,
 			AppSupportDir:       appSupport,
+			LogsDir:             logs,
 			CachesDir:           caches,
 			DefaultSharedTmpDir: filepath.Join(caches, "SharedTmp"),
 		}, nil
@@ -40,6 +43,7 @@ func Resolve(instanceID string) (Paths, error) {
 		return Paths{
 			InstanceID:          instanceID,
 			AppSupportDir:       appSupport,
+			LogsDir:             appSupport,
 			CachesDir:           caches,
 			DefaultSharedTmpDir: filepath.Join(caches, "SharedTmp"),
 		}, nil
@@ -47,7 +51,7 @@ func Resolve(instanceID string) (Paths, error) {
 }
 
 func EnsureDirs(p Paths) error {
-	for _, dir := range []string{p.AppSupportDir, p.CachesDir, p.DefaultSharedTmpDir} {
+	for _, dir := range []string{p.AppSupportDir, p.LogsDir, p.CachesDir, p.DefaultSharedTmpDir} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("mkdir %q: %w", dir, err)
 		}

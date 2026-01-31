@@ -158,7 +158,7 @@ private struct AskSheetView: View {
 
 struct ContentView: View {
     @State private var statusText = "Not loaded"
-    @State private var imageRef = "docker.io/gravtice/nous-claude-agent-service:0.2.3"
+    @State private var imageRef = "docker.io/gravtice/nous-claude-agent-service:0.2.4"
 
     private enum SystemPromptMode: String, CaseIterable, Identifiable {
         case builtin
@@ -1302,30 +1302,8 @@ struct ContentView: View {
             if key.isEmpty {
                 throw NousAgentRunnerError.invalidConfig("env line \(idx + 1): empty key")
             }
-            if key.hasPrefix("NOUS_") {
-                throw NousAgentRunnerError.invalidConfig("env key is reserved: \(key)")
-            }
-            if !isValidEnvKey(key) {
-                throw NousAgentRunnerError.invalidConfig("invalid env key: \(key)")
-            }
-            if out[key] != nil {
-                throw NousAgentRunnerError.invalidConfig("duplicate env key: \(key)")
-            }
             out[key] = value
         }
         return out
-    }
-
-    private func isValidEnvKey(_ key: String) -> Bool {
-        guard let first = key.utf8.first else { return false }
-        if first >= 48 && first <= 57 { return false } // 0-9
-        for (i, b) in key.utf8.enumerated() {
-            if b == 95 { continue } // _
-            if b >= 65 && b <= 90 { continue } // A-Z
-            if b >= 97 && b <= 122 { continue } // a-z
-            if i > 0 && b >= 48 && b <= 57 { continue } // 0-9
-            return false
-        }
-        return true
     }
 }

@@ -66,7 +66,7 @@ def _load_b64_json_env(name: str, default: Any) -> Any:
 
 
 def _decode_service_config() -> dict[str, Any]:
-    raw = os.getenv("NOUS_SERVICE_CONFIG_B64", "")
+    raw = os.getenv("NOUS_RUNNER_SERVICE_CONFIG_B64", "")
     if not raw:
         return {}
     decoded = base64.b64decode(raw.encode("utf-8"), validate=True)
@@ -355,12 +355,12 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
     session_id = request.query.get("session_id") or os.urandom(8).hex()
     await ws.send_json({"type": "session.started", "session_id": session_id})
 
-    max_inline = _env_int("NOUS_MAX_INLINE_BYTES", 8 * 1024 * 1024)
+    max_inline = _env_int("NOUS_RUNNER_MAX_INLINE_BYTES", 8 * 1024 * 1024)
     ask_timeout_seconds = float(os.getenv("NOUS_ASK_TIMEOUT_SECONDS", "300") or "300")
     first_event_timeout_seconds = float(os.getenv("NOUS_FIRST_EVENT_TIMEOUT_SECONDS", "20") or "20")
     if first_event_timeout_seconds <= 0:
         first_event_timeout_seconds = 20.0
-    share_dirs = _load_b64_json_env("NOUS_SHARE_DIRS_B64", [])
+    share_dirs = _load_b64_json_env("NOUS_RUNNER_SHARE_DIRS_B64", [])
     if not isinstance(share_dirs, list):
         share_dirs = []
     share_dirs = [str(x) for x in share_dirs if str(x)]
@@ -817,7 +817,7 @@ async def health(_: web.Request) -> web.Response:
 
 
 async def run() -> None:
-    port = _env_int("NOUS_SERVICE_PORT", 8000)
+    port = _env_int("NOUS_RUNNER_SERVICE_PORT", 8000)
 
     app = web.Application()
     app.router.add_get("/health", health)

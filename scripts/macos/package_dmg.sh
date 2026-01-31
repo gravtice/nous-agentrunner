@@ -21,6 +21,10 @@ Usage: $(basename "$0") <app_path>
   - a directory containing exactly one *.app
   - a SwiftPM package directory (contains Package.swift); script will create a minimal .app wrapper
 
+Env:
+  NOUS_CODESIGN_IDENTITY   codesign identity (default: ad-hoc "-")
+  NOUS_DISABLE_CODESIGN=1  skip codesign
+
 Output:
   dist/<AppName>.dmg
 EOF
@@ -52,25 +56,26 @@ maybe_codesign_adhoc() {
   if ! command -v codesign >/dev/null 2>&1; then
     return 0
   fi
+  local identity="${NOUS_CODESIGN_IDENTITY:--}"
 
   # Sign injected helper executables (avoid --deep; SwiftPM resource bundles may be minimal dirs).
   local res_dir="${app}/Contents/Resources"
   for f in nous-agent-runnerd nous-guest-runnerd; do
     if [ -f "${res_dir}/${f}" ]; then
-      codesign --force --sign - --timestamp=none "${res_dir}/${f}" >/dev/null 2>&1 || fail "codesign failed: ${res_dir}/${f}"
+      codesign --force --sign "$identity" --timestamp=none "${res_dir}/${f}" >/dev/null 2>&1 || fail "codesign failed: ${res_dir}/${f}"
     fi
   done
   if [ -f "${res_dir}/limactl" ]; then
     # AVF (vmType=vz) requires com.apple.security.virtualization entitlement on macOS 14+.
     local entitlements="${ROOT_DIR}/references/lima/vz.entitlements"
     if [ -f "$entitlements" ]; then
-      codesign --force --sign - --timestamp=none --entitlements "$entitlements" "${res_dir}/limactl" >/dev/null 2>&1 || fail "codesign failed: ${res_dir}/limactl"
+      codesign --force --sign "$identity" --timestamp=none --entitlements "$entitlements" "${res_dir}/limactl" >/dev/null 2>&1 || fail "codesign failed: ${res_dir}/limactl"
     else
       fail "missing entitlements file: ${entitlements}"
     fi
   fi
 
-  codesign --force --sign - --timestamp=none "$app" >/dev/null 2>&1 || fail "codesign failed: $app"
+  codesign --force --sign "$identity" --timestamp=none "$app" >/dev/null 2>&1 || fail "codesign failed: $app"
 }
 
 build_runtime_binaries_if_needed() {
@@ -139,7 +144,7 @@ create_minimal_app_from_swiftpm() {
   local nous_version="0.1.0"
   local version_file="${ROOT_DIR}/VERSION"
   if [ -f "${version_file}" ]; then
-    nous_version="$(awk -F= '$1=="NOUS_VERSION"{print $2; exit}' "${version_file}" | tr -d ' \t\r\"')"
+    nous_version="$(awk -F= '$1=="NOUS_AGENT_RUNNER_VERSION"{print $2; exit}' "${version_file}" | tr -d ' \t\r\"')"
     if [ -z "${nous_version}" ]; then
       nous_version="0.1.0"
     fi
