@@ -36,11 +36,14 @@ struct SkillsView: View {
 
                     HStack {
                         Button("Open Folder") { openURL(skillsDirURL) }
+                            .accessibilityIdentifier("skillsOpenFolderButton")
                         Button("Refresh") { Task { await refresh() } }
+                            .accessibilityIdentifier("skillsRefreshButton")
                         Spacer()
                         Text("count: \(skills.count)")
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("skillsCountText")
                     }
                 }
             }
@@ -98,12 +101,14 @@ struct SkillsView: View {
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
+                    .accessibilityIdentifier("skillsStatusText")
             }
 
             HStack {
                 Button("Install Skill") { showInstall = true }
                 Spacer()
                 Button("Close") { dismiss() }
+                    .accessibilityIdentifier("skillsCloseButton")
             }
         }
         .padding(16)

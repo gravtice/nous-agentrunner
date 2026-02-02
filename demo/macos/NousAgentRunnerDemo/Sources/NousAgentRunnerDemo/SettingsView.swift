@@ -18,6 +18,7 @@ struct SettingsView: View {
                     TextEditor(text: $serviceEnvText)
                         .font(.system(.body, design: .monospaced))
                         .frame(minHeight: 220)
+                        .accessibilityIdentifier("serviceEnvEditor")
                         .overlay {
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(.quaternary, lineWidth: 1)
@@ -28,10 +29,10 @@ struct SettingsView: View {
             HStack {
                 Spacer()
                 Button("Close") { dismiss() }
+                    .accessibilityIdentifier("settingsCloseButton")
             }
         }
         .padding(16)
         .frame(minWidth: 640, minHeight: 360)
     }
 }
-
