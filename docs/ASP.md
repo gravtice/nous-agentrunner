@@ -1,13 +1,8 @@
-# ASP（Agent Service Protocol）合并版
+# ASP（Agent Service Protocol）
 
 ASP 是 Nous Agent Runner 的**数据面**协议：用于与某个 Agent Service 进行**流式会话**交互。
 
-> 说明：本文档合并了历史版本文档中的“基线 + 增量”内容，便于上游一次性阅读：
->
-> - `docs/v0.1.0/ASP.md`（基线：消息结构与事件集合）
-> - `docs/v0.2.0/ASP.md`（增量：`session.started` 能力协商字段、`error.fatal` 语义）
->
-> 传输不变：WebSocket 文本帧 + JSON object；以当前代码实现为准。
+本文档以当前代码实现为准（`nous-agent-runnerd` 作为 WebSocket 网关，代理到 Guest/容器内的 `/v1/chat`）。
 
 ---
 
@@ -258,4 +253,3 @@ Agent 需要用户补充信息（AskUserQuestion）时推送：
     - 若 `fatal=true`：连接将被关闭；可重连后继续（同一 `service_id` 会复用 `session_id`）
     - 否则：若该错误来自本轮 `input`，通常随后会有 `done`；若没有 `done`，表示该错误不属于一轮 `input`（例如非法消息/不合法 ask.answer 等）
 - 同一连接内不要并发发送多条 `input`；若上一轮未结束再次发送，`claude` service 可能返回 `{"type":"error","code":"BUSY",...}`
-
