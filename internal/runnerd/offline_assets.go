@@ -17,7 +17,6 @@ type offlineAssets struct {
 	NerdctlArchivePath   string
 	NerdctlArchiveDigest string
 	Images               map[string]string // image_ref -> tar path (host path; also visible in guest)
-	BrowserRuntimePack   string            // host path; also visible in guest (optional)
 }
 
 type offlineAssetsManifest struct {
@@ -121,27 +120,12 @@ func (s *Server) prepareOfflineAssets() (*offlineAssets, error) {
 		images[img.Ref] = dst
 	}
 
-	// Optional: bundle browser runtime pack (e.g. agent-browser + Node + Chromium) to avoid downloads.
-	// Convention: nous-offline-assets/browser-runtime/agent-browser-runtime-v<ver>-linux-aarch64.tar.gz
-	browserPackRel := "browser-runtime/agent-browser-runtime-v" + agentBrowserVersion + "-linux-aarch64.tar.gz"
-	browserPackSrc := filepath.Join(srcDir, browserPackRel)
-	browserPackDst := filepath.Join(dstDir, browserPackRel)
-	browserPackPath := ""
-	if fi, err := os.Stat(browserPackSrc); err == nil && fi.Mode().IsRegular() {
-		if err := copyFileIfNeeded(browserPackSrc, browserPackDst); err != nil {
-			log.Printf("vm.offline_assets: skip browser runtime pack (copy): %v", err)
-		} else {
-			browserPackPath = browserPackDst
-		}
-	}
-
 	return &offlineAssets{
 		VMImagePath:          vmDst,
 		VMImageDigest:        vm.Digest,
 		NerdctlArchivePath:   nerdctlDst,
 		NerdctlArchiveDigest: nerdctl.Digest,
 		Images:               images,
-		BrowserRuntimePack:   browserPackPath,
 	}, nil
 }
 

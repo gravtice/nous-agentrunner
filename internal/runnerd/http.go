@@ -46,9 +46,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/skills/install", s.withAuth(s.handleSkillsInstall))
 	mux.HandleFunc("DELETE /v1/skills/{skill_name}", s.withAuth(s.handleSkillsDelete))
 
-	mux.HandleFunc("POST /v1/browser/runtime/ensure", s.withAuth(s.handleBrowserRuntimeEnsure))
-	mux.HandleFunc("POST /v1/browser/sessions/{session}/command", s.withAuth(s.handleBrowserCommand))
-
 	// ASP (v1: WebSocket)
 	mux.HandleFunc("GET /v1/services/{service_id}/chat", s.withAuth(s.handleServiceChatWS))
 
