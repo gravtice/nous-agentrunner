@@ -1,14 +1,8 @@
-# ASMP（Agent Service Management Protocol）合并版
+# ASMP（Agent Service Management Protocol）
 
 ASMP 是 Nous Agent Runner 的**控制面**协议：用于管理 VM、共享目录（Share）、镜像（Image）、以及 Agent Service 生命周期。
 
-> 说明：本文档合并了历史版本文档中的“基线 + 增量”内容，便于上游一次性阅读：
->
-> - `docs/v0.1.0/ASMP.md`（基线：全量 API）
-> - `docs/v0.2.0/ASMP.md`（增量：`system.status.protocols/capabilities`、service idle auto-stop）
-> - `docs/v0.3.0/ASMP.md`（增量：skills 管理）
->
-> API 前缀固定为 `/v1`，鉴权不变；以当前代码实现为准。
+本文档以当前代码实现为准（`nous-agent-runnerd`，API 前缀固定为 `/v1`）。
 
 ---
 
@@ -732,4 +726,3 @@ Runner 支持以下常见输入：
 7. 结束后根据需求：
    - 暂停保留：`POST /v1/services/{service_id}/stop`
    - 删除释放：`DELETE /v1/services/{service_id}`
-
