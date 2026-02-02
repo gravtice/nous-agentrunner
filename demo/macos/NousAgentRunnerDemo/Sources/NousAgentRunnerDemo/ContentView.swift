@@ -193,7 +193,7 @@ struct ContentView: View {
     @State private var systemPromptCustom = "You are a helpful agent."
     @State private var systemPromptAppend = ""
     @State private var permissionMode: PermissionMode = .bypassPermissions
-    @State private var model = "claude-opus-4-5"
+    @State private var model = ""
     @State private var rwMount = ""
     @State private var selectedWorkDirURL: URL?
     @State private var showWorkDirPicker = false
@@ -272,22 +272,36 @@ struct ContentView: View {
                 .font(.system(.body, design: .monospaced))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("statusText")
 
             HStack {
                 Button("Refresh Status") { Task { await refreshStatus() } }
+                    .accessibilityIdentifier("refreshStatusButton")
                 Button("Refresh Services") { Task { await refreshServices() } }
+                    .accessibilityIdentifier("refreshServicesButton")
                 Button("Restart VM") { Task { await restartVM() } }
+                    .accessibilityIdentifier("restartVMButton")
                 Button("Test Guest→Host Tunnel") { Task { await testGuestToHostTunnel() } }
+                    .accessibilityIdentifier("testTunnelButton")
                 Button("Create Service") { Task { await createService() } }
+                    .accessibilityIdentifier("createServiceButton")
                 Button("Settings") { showSettings = true }
+                    .accessibilityIdentifier("settingsButton")
                 Button("Skills") { showSkills = true }
+                    .accessibilityIdentifier("skillsButton")
                 Button("Open Logs") { openRunnerLogs() }
+                    .accessibilityIdentifier("openLogsButton")
                 Button("Open VM Logs") { openVMLogs() }
+                    .accessibilityIdentifier("openVMLogsButton")
                 if let serviceID {
                     Button("Connect WS") { connectWS(serviceID: serviceID) }
+                        .accessibilityIdentifier("connectWSButton")
                     Button("Stop Service") { Task { await stopService(serviceID: serviceID) } }
+                        .accessibilityIdentifier("stopServiceButton")
                     Button("Resume Service") { Task { await resumeService(serviceID: serviceID) } }
+                        .accessibilityIdentifier("resumeServiceButton")
                     Button("Delete Service") { Task { await deleteService(serviceID: serviceID) } }
+                        .accessibilityIdentifier("deleteServiceButton")
                 }
             }
 
@@ -350,6 +364,7 @@ struct ContentView: View {
                         GroupBox("Create Service") {
                             VStack(alignment: .leading, spacing: 10) {
                                 TextField("image_ref", text: $imageRef)
+                                    .accessibilityIdentifier("imageRefField")
                                 TextField("rw_mount (optional)", text: $rwMount)
 
                                 HStack(alignment: .top) {
@@ -485,6 +500,16 @@ struct ContentView: View {
                                 if let serviceID {
                                     Text("service_id: \(serviceID)")
                                         .font(.system(.body, design: .monospaced))
+                                        .accessibilityIdentifier("serviceIDText")
+                                    if let svc = services.first(where: { ($0["service_id"] as? String) == serviceID }),
+                                       let state = svc["state"] as? String,
+                                       !state.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    {
+                                        Text("service_state: \(state)")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .accessibilityIdentifier("serviceStateText")
+                                    }
                                 }
                             }
                         }
@@ -503,6 +528,7 @@ struct ContentView: View {
                                     .textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(8)
+                                    .accessibilityIdentifier("chatOutputText")
                             }
                             .frame(minHeight: 200, maxHeight: .infinity)
                             .overlay {
@@ -520,8 +546,10 @@ struct ContentView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
+                                .accessibilityIdentifier("permissionModePicker")
                                 Button("Apply") { sendPermissionModeSet(mode: permissionMode) }
                                     .disabled(wsTask == nil)
+                                    .accessibilityIdentifier("permissionModeApplyButton")
                                 Spacer()
                             }
 
@@ -532,6 +560,7 @@ struct ContentView: View {
                                             .font(.system(.caption, design: .monospaced))
                                             .foregroundStyle(.secondary)
                                             .textSelection(.enabled)
+                                            .accessibilityIdentifier("usageSummaryText")
                                     }
                                     if !lastToolSummary.isEmpty {
                                         Text("last tool: \(lastToolSummary)")
@@ -544,6 +573,7 @@ struct ContentView: View {
 
                             HStack {
                                 Button("Pick Image") { showImagePicker = true }
+                                    .accessibilityIdentifier("pickImageButton")
                                 if let url = selectedImageURL {
                                     Text(url.lastPathComponent)
                                         .font(.system(.caption, design: .monospaced))
@@ -552,11 +582,14 @@ struct ContentView: View {
                                 TextField("message", text: $chatInput)
                                     .submitLabel(.send)
                                     .onSubmit { sendChat() }
+                                    .accessibilityIdentifier("chatInputField")
                                 Button("Interrupt") { sendInterrupt() }
                                     .disabled(wsTask == nil)
+                                    .accessibilityIdentifier("interruptButton")
                                 Button("Send") { sendChat() }
                                     .keyboardShortcut(.return, modifiers: [])
                                     .disabled(!canSend)
+                                    .accessibilityIdentifier("sendButton")
                             }
 
                             DisclosureGroup("Debug", isExpanded: $showDebug) {
@@ -571,6 +604,7 @@ struct ContentView: View {
                                                 .textSelection(.enabled)
                                                 .frame(maxWidth: .infinity, alignment: .leading)
                                                 .padding(8)
+                                                .accessibilityIdentifier("debugThinkingText")
                                         }
                                         .frame(minHeight: 120)
                                         .overlay {
@@ -588,6 +622,7 @@ struct ContentView: View {
                                                 .textSelection(.enabled)
                                                 .frame(maxWidth: .infinity, alignment: .leading)
                                                 .padding(8)
+                                                .accessibilityIdentifier("debugEventsText")
                                         }
                                         .frame(minHeight: 120)
                                         .overlay {

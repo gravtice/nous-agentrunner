@@ -1,0 +1,565 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		06D6F88E93E9F25C9084B65C /* SkillsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46CF74EA75131D2F12438DFC /* SkillsView.swift */; };
+		17D3BEA911D61FF269976FCB /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8E5C49541B2A9D2B2086B3D2 /* XCTest.framework */; };
+		3C1F75E80C436BB6E6914F19 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31C72C47565D106541CB5C9 /* SettingsView.swift */; };
+		3DCB70DC6775616424640A4C /* NousAgentRunnerKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE49EA4169B49FFB358EF41F /* NousAgentRunnerKit.swift */; };
+		5381610769F2C4F356A41863 /* DemoPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8404B18F5094FF0D801C5947 /* DemoPaths.swift */; };
+		550D1C66952EDF79E75530AA /* NousAgentRunnerDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 558A5A23213325B2D9ED64F4 /* NousAgentRunnerDemoApp.swift */; };
+		77CA4955978DB2F0412BABA1 /* NousAgentRunnerKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E50FD3AFCB41EC15EE929BDC /* NousAgentRunnerKit.framework */; };
+		B72A38FD7E036A0686F741D0 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B0314E1151CDD4EB0F218F7 /* ContentView.swift */; };
+		CEB450A88B9F15F14C743645 /* NousAgentRunnerKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E50FD3AFCB41EC15EE929BDC /* NousAgentRunnerKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		EB588DDBB592A198B406DBBF /* NousAgentRunnerDemoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CC62BEFDDC15898CC8FF36 /* NousAgentRunnerDemoUITests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		5084A6329D288D3A411992C4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = EDBCE2ED39C41FD526D8191C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 73BC2B781E713326F2A3F1B2;
+			remoteInfo = NousAgentRunnerDemo;
+		};
+		615684C7C934A126013FF0A3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = EDBCE2ED39C41FD526D8191C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2B7BA33BF8FC91BEF64A96CF;
+			remoteInfo = NousAgentRunnerKit;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		9B3D75A72D2E0100511F7B1A /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				CEB450A88B9F15F14C743645 /* NousAgentRunnerKit.framework in Embed Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0553EC9E7715A49BC864CD07 /* NousAgentRunnerDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NousAgentRunnerDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3B0314E1151CDD4EB0F218F7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		46CF74EA75131D2F12438DFC /* SkillsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsView.swift; sourceTree = "<group>"; };
+		558A5A23213325B2D9ED64F4 /* NousAgentRunnerDemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NousAgentRunnerDemoApp.swift; sourceTree = "<group>"; };
+		8404B18F5094FF0D801C5947 /* DemoPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoPaths.swift; sourceTree = "<group>"; };
+		8E5C49541B2A9D2B2086B3D2 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		D31C72C47565D106541CB5C9 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		E50FD3AFCB41EC15EE929BDC /* NousAgentRunnerKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = NousAgentRunnerKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5CC62BEFDDC15898CC8FF36 /* NousAgentRunnerDemoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NousAgentRunnerDemoUITests.swift; sourceTree = "<group>"; };
+		FE49EA4169B49FFB358EF41F /* NousAgentRunnerKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NousAgentRunnerKit.swift; sourceTree = "<group>"; };
+		B4824C417271192C9BD808D7 /* NousAgentRunnerDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NousAgentRunnerDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6C019A60F1E12917D9C90BE2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				77CA4955978DB2F0412BABA1 /* NousAgentRunnerKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DB30146685A5E5257D3F3C70 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				17D3BEA911D61FF269976FCB /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F34FBD8FBCD8311C6112F4B9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		ADC8345E5993D588BC9B99B5 = {
+			isa = PBXGroup;
+			children = (
+				D4301C83BA8359BC1D68F7D7 /* NousAgentRunnerDemo */,
+				8D082DB2505E7CBCC223C927 /* NousAgentRunnerKit */,
+				DAABC830C11B6EC12B59CADD /* NousAgentRunnerDemoUITests */,
+				260890C20F220E0DEBB124E1 /* Frameworks */,
+				6FDF967B94C4DD8D47A92E64 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		260890C20F220E0DEBB124E1 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				8E5C49541B2A9D2B2086B3D2 /* XCTest.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		6FDF967B94C4DD8D47A92E64 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0553EC9E7715A49BC864CD07 /* NousAgentRunnerDemo.app */,
+				E50FD3AFCB41EC15EE929BDC /* NousAgentRunnerKit.framework */,
+				B4824C417271192C9BD808D7 /* NousAgentRunnerDemoUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8D082DB2505E7CBCC223C927 /* NousAgentRunnerKit */ = {
+			isa = PBXGroup;
+			children = (
+				FE49EA4169B49FFB358EF41F /* NousAgentRunnerKit.swift */,
+			);
+			name = NousAgentRunnerKit;
+			path = ../../../sdk/swift/NousAgentRunnerKit/Sources/NousAgentRunnerKit;
+			sourceTree = "<group>";
+		};
+		D4301C83BA8359BC1D68F7D7 /* NousAgentRunnerDemo */ = {
+			isa = PBXGroup;
+			children = (
+				3B0314E1151CDD4EB0F218F7 /* ContentView.swift */,
+				8404B18F5094FF0D801C5947 /* DemoPaths.swift */,
+				558A5A23213325B2D9ED64F4 /* NousAgentRunnerDemoApp.swift */,
+				D31C72C47565D106541CB5C9 /* SettingsView.swift */,
+				46CF74EA75131D2F12438DFC /* SkillsView.swift */,
+			);
+			name = NousAgentRunnerDemo;
+			path = Sources/NousAgentRunnerDemo;
+			sourceTree = "<group>";
+		};
+		DAABC830C11B6EC12B59CADD /* NousAgentRunnerDemoUITests */ = {
+			isa = PBXGroup;
+			children = (
+				E5CC62BEFDDC15898CC8FF36 /* NousAgentRunnerDemoUITests.swift */,
+			);
+			name = NousAgentRunnerDemoUITests;
+			path = NousAgentRunnerDemoUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2B7BA33BF8FC91BEF64A96CF /* NousAgentRunnerKit */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E035819A2E8E6014F1396135 /* Build configuration list for PBXNativeTarget "NousAgentRunnerKit" */;
+			buildPhases = (
+				D3496AD933D65458EC9DC248 /* Sources */,
+				F34FBD8FBCD8311C6112F4B9 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NousAgentRunnerKit;
+			productName = NousAgentRunnerKit;
+			productReference = E50FD3AFCB41EC15EE929BDC /* NousAgentRunnerKit.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		73BC2B781E713326F2A3F1B2 /* NousAgentRunnerDemo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE49853E6DA2BE0C0E2598EE /* Build configuration list for PBXNativeTarget "NousAgentRunnerDemo" */;
+			buildPhases = (
+				0F392102C17906B6329A1296 /* Sources */,
+				6C019A60F1E12917D9C90BE2 /* Frameworks */,
+				80E7F942E31916D228585CAD /* Resources */,
+				9B3D75A72D2E0100511F7B1A /* Embed Frameworks */,
+				D4FB79D5D85AC6FC8C95373D /* Embed Nous Runtime */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B211FB2EA294D389E8583646 /* PBXTargetDependency */,
+			);
+			name = NousAgentRunnerDemo;
+			productName = NousAgentRunnerDemo;
+			productReference = 0553EC9E7715A49BC864CD07 /* NousAgentRunnerDemo.app */;
+			productType = "com.apple.product-type.application";
+		};
+		8CED167B55B32428C878D1EF /* NousAgentRunnerDemoUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7CDAB059CCDC44595FCD5820 /* Build configuration list for PBXNativeTarget "NousAgentRunnerDemoUITests" */;
+			buildPhases = (
+				D739B54FF3E4FAC6AD71A1D6 /* Sources */,
+				DB30146685A5E5257D3F3C70 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				96172A64DA615970E97CC8E9 /* PBXTargetDependency */,
+			);
+			name = NousAgentRunnerDemoUITests;
+			productName = NousAgentRunnerDemoUITests;
+			productReference = B4824C417271192C9BD808D7 /* NousAgentRunnerDemoUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		EDBCE2ED39C41FD526D8191C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					2B7BA33BF8FC91BEF64A96CF = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					73BC2B781E713326F2A3F1B2 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					8CED167B55B32428C878D1EF = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = 73BC2B781E713326F2A3F1B2;
+					};
+				};
+			};
+			buildConfigurationList = EEA85C96BC770106D19C021C /* Build configuration list for PBXProject "NousAgentRunnerDemo" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = ADC8345E5993D588BC9B99B5;
+			productRefGroup = 6FDF967B94C4DD8D47A92E64 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				2B7BA33BF8FC91BEF64A96CF /* NousAgentRunnerKit */,
+				73BC2B781E713326F2A3F1B2 /* NousAgentRunnerDemo */,
+				8CED167B55B32428C878D1EF /* NousAgentRunnerDemoUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		80E7F942E31916D228585CAD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		D4FB79D5D85AC6FC8C95373D /* Embed Nous Runtime */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Nous Runtime";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "set -euo pipefail\n\nROOT_DIR=\"${SRCROOT}/../../..\"\nDIST_DIR=\"${ROOT_DIR}/dist\"\n\nmkdir -p \"${DIST_DIR}\"\nif command -v go >/dev/null 2>&1; then\n  \"${ROOT_DIR}/scripts/macos/build_binaries.sh\"\nelse\n  for f in nous-agent-runnerd nous-guest-runnerd limactl lima-guestagent.Linux-aarch64; do\n    if [ ! -f \"${DIST_DIR}/${f}\" ]; then\n      echo \"error: go not found and missing: ${DIST_DIR}/${f}\" >&2\n      exit 1\n    fi\n  done\n  if [ ! -d \"${DIST_DIR}/lima-templates\" ]; then\n    echo \"error: go not found and missing directory: ${DIST_DIR}/lima-templates\" >&2\n    exit 1\n  fi\nfi\n\nRES_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nCONTENTS_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}\"\n\nmkdir -p \"${RES_DIR}\"\n\ninstall -m 0755 \"${DIST_DIR}/nous-agent-runnerd\" \"${RES_DIR}/nous-agent-runnerd\"\ninstall -m 0755 \"${DIST_DIR}/nous-guest-runnerd\" \"${RES_DIR}/nous-guest-runnerd\"\ninstall -m 0755 \"${DIST_DIR}/limactl\" \"${RES_DIR}/limactl\"\n\nmkdir -p \"${CONTENTS_DIR}/share/lima\"\ninstall -m 0755 \"${DIST_DIR}/lima-guestagent.Linux-aarch64\" \"${CONTENTS_DIR}/share/lima/lima-guestagent.Linux-aarch64\"\n\nrm -rf \"${RES_DIR}/lima-templates\"\nditto \"${DIST_DIR}/lima-templates\" \"${RES_DIR}/lima-templates\"\n\nif command -v codesign >/dev/null 2>&1; then\n  codesign --force --sign - --timestamp=none \"${RES_DIR}/nous-agent-runnerd\" >/dev/null\n  codesign --force --sign - --timestamp=none \"${RES_DIR}/nous-guest-runnerd\" >/dev/null\n\n  ENTITLEMENTS=\"${ROOT_DIR}/references/lima/vz.entitlements\"\n  if [ ! -f \"${ENTITLEMENTS}\" ]; then\n    echo \"error: missing entitlements file: ${ENTITLEMENTS}\" >&2\n    exit 1\n  fi\n  codesign --force --sign - --timestamp=none --entitlements \"${ENTITLEMENTS}\" \"${RES_DIR}/limactl\" >/dev/null\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0F392102C17906B6329A1296 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B72A38FD7E036A0686F741D0 /* ContentView.swift in Sources */,
+				5381610769F2C4F356A41863 /* DemoPaths.swift in Sources */,
+				550D1C66952EDF79E75530AA /* NousAgentRunnerDemoApp.swift in Sources */,
+				3C1F75E80C436BB6E6914F19 /* SettingsView.swift in Sources */,
+				06D6F88E93E9F25C9084B65C /* SkillsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D3496AD933D65458EC9DC248 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3DCB70DC6775616424640A4C /* NousAgentRunnerKit.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D739B54FF3E4FAC6AD71A1D6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EB588DDBB592A198B406DBBF /* NousAgentRunnerDemoUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		96172A64DA615970E97CC8E9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 73BC2B781E713326F2A3F1B2 /* NousAgentRunnerDemo */;
+			targetProxy = 5084A6329D288D3A411992C4 /* PBXContainerItemProxy */;
+		};
+		B211FB2EA294D389E8583646 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2B7BA33BF8FC91BEF64A96CF /* NousAgentRunnerKit */;
+			targetProxy = 615684C7C934A126013FF0A3 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		18FD9E70AB67B2F42F97F6CE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Nous Agent Runner Demo";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.nous.NousAgentRunnerDemo;
+				PRODUCT_NAME = NousAgentRunnerDemo;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		1C44553A2C1A6E111BDEB086 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.nous.NousAgentRunnerDemoUITests;
+				PRODUCT_NAME = NousAgentRunnerDemoUITests;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = NousAgentRunnerDemo;
+			};
+			name = Debug;
+		};
+		63F31F9D1BB8C6C288ED7B78 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		8D9EE28F09ABD99618A13ADD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				DEFINES_MODULE = YES;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.nous.NousAgentRunnerKit;
+				PRODUCT_NAME = NousAgentRunnerKit;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B0A88D0466E96EEAB7E06ABF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.nous.NousAgentRunnerDemoUITests;
+				PRODUCT_NAME = NousAgentRunnerDemoUITests;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = NousAgentRunnerDemo;
+			};
+			name = Release;
+		};
+		C3CC89709C0BACDE97555F98 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				DEFINES_MODULE = YES;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.nous.NousAgentRunnerKit;
+				PRODUCT_NAME = NousAgentRunnerKit;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CA4712232F505148B0650A47 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		D00B4243B3D09E11A783CB10 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Nous Agent Runner Demo";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.nous.NousAgentRunnerDemo;
+				PRODUCT_NAME = NousAgentRunnerDemo;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		7CDAB059CCDC44595FCD5820 /* Build configuration list for PBXNativeTarget "NousAgentRunnerDemoUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1C44553A2C1A6E111BDEB086 /* Debug */,
+				B0A88D0466E96EEAB7E06ABF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CE49853E6DA2BE0C0E2598EE /* Build configuration list for PBXNativeTarget "NousAgentRunnerDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D00B4243B3D09E11A783CB10 /* Debug */,
+				18FD9E70AB67B2F42F97F6CE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EEA85C96BC770106D19C021C /* Build configuration list for PBXProject "NousAgentRunnerDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				63F31F9D1BB8C6C288ED7B78 /* Debug */,
+				CA4712232F505148B0650A47 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E035819A2E8E6014F1396135 /* Build configuration list for PBXNativeTarget "NousAgentRunnerKit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8D9EE28F09ABD99618A13ADD /* Debug */,
+				C3CC89709C0BACDE97555F98 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = EDBCE2ED39C41FD526D8191C /* Project object */;
+}
