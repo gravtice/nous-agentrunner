@@ -53,6 +53,18 @@ copy_exec() {
   install -m 0755 "$src" "$dst"
 }
 
+read_runner_version() {
+  local version_file="${ROOT_DIR}/VERSION"
+  local v="0.1.0"
+  if [ -f "${version_file}" ]; then
+    v="$(awk -F= '$1=="NOUS_AGENT_RUNNER_VERSION"{print $2; exit}' "${version_file}" | tr -d ' \t\r\"')"
+  fi
+  if [ -z "${v}" ]; then
+    v="0.1.0"
+  fi
+  echo "${v}"
+}
+
 maybe_codesign_adhoc() {
   local app="$1"
   if [ "${NOUS_DISABLE_CODESIGN:-}" = "1" ]; then
@@ -280,15 +292,65 @@ inject_runtime_into_app() {
   rm -rf "${res_dir}/lima-templates"
   ditto "${DIST_DIR}/lima-templates" "${res_dir}/lima-templates"
 
+  local runner_version
+  runner_version="$(read_runner_version)"
+  local default_image="docker.io/gravtice/nous-claude-agent-service:${runner_version}"
+
   # Optional: bundle offline assets to avoid first-run downloads.
   # See: scripts/macos/fetch_offline_assets.sh
+  local offline_dir=""
+  local offline_manifest=""
   if [ -d "${DIST_DIR}/offline-assets" ]; then
-    if [ ! -f "${DIST_DIR}/offline-assets/manifest.json" ]; then
+    offline_dir="nous-offline-assets"
+    offline_manifest="${DIST_DIR}/offline-assets/manifest.json"
+    if [ ! -f "${offline_manifest}" ]; then
       fail "offline-assets present but missing manifest.json: ${DIST_DIR}/offline-assets"
     fi
     rm -rf "${res_dir}/nous-offline-assets"
     ditto "${DIST_DIR}/offline-assets" "${res_dir}/nous-offline-assets"
+    rm -f "${res_dir}/nous-offline-assets/manifest.json"
   fi
+
+  # Single source of truth: runtime-manifest.json (no extra manifests in the app bundle).
+  require_cmd python3
+  NOUS_AGENT_RUNNER_VERSION="${runner_version}" \
+    NOUS_DEFAULT_IMAGE_REF="${default_image}" \
+    NOUS_OFFLINE_ASSETS_DIR="${offline_dir}" \
+    NOUS_OFFLINE_ASSETS_MANIFEST="${offline_manifest}" \
+    python3 - <<PY >"${res_dir}/runtime-manifest.json"
+import json
+import os
+
+runner_version = os.environ["NOUS_AGENT_RUNNER_VERSION"]
+default_image = os.environ["NOUS_DEFAULT_IMAGE_REF"]
+offline_dir = os.environ.get("NOUS_OFFLINE_ASSETS_DIR", "").strip()
+offline_manifest = os.environ.get("NOUS_OFFLINE_ASSETS_MANIFEST", "").strip()
+
+m = {
+    "schema_version": 1,
+    "runner_version": runner_version,
+    "image_contract_version": 1,
+    "default_images": {
+        "claude_agent_service": default_image,
+    },
+}
+
+if offline_dir and offline_manifest:
+    with open(offline_manifest, "r", encoding="utf-8") as f:
+        src = json.load(f)
+    if src.get("schema_version") != 1:
+        raise SystemExit(f"unsupported offline-assets schema_version={src.get('schema_version')}")
+    m["offline_assets"] = {
+        "dir": offline_dir,
+        "vm_image": src.get("vm_image", {}),
+        "containerd_archive": src.get("containerd_archive", {}),
+        "images": src.get("images", []),
+    }
+
+print(json.dumps(m, indent=2))
+PY
+
+  python3 -m json.tool "${res_dir}/runtime-manifest.json" >/dev/null || fail "runtime-manifest.json is not valid JSON"
 }
 
 main() {

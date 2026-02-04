@@ -19,8 +19,16 @@ type offlineAssets struct {
 	Images               map[string]string // image_ref -> tar path (host path; also visible in guest)
 }
 
-type offlineAssetsManifest struct {
-	SchemaVersion     int               `json:"schema_version"`
+type runtimeManifest struct {
+	SchemaVersion        int                 `json:"schema_version"`
+	RunnerVersion        string              `json:"runner_version"`
+	ImageContractVersion int                 `json:"image_contract_version,omitempty"`
+	DefaultImages        map[string]string   `json:"default_images,omitempty"`
+	OfflineAssets        *runtimeOfflineSpec `json:"offline_assets,omitempty"`
+}
+
+type runtimeOfflineSpec struct {
+	Dir              string            `json:"dir"`
 	VMImage           offlineAssetEntry `json:"vm_image"`
 	ContainerdArchive offlineAssetEntry `json:"containerd_archive"`
 	Images            []offlineImage    `json:"images"`
@@ -43,34 +51,54 @@ func (s *Server) prepareOfflineAssets() (*offlineAssets, error) {
 		return nil, nil
 	}
 
-	srcDir := findBundledDir("nous-offline-assets")
-	if srcDir == "" {
+	manifestPath := findBundledRuntimeManifestPath()
+	if manifestPath == "" {
 		return nil, nil
 	}
 
-	manifestPath := filepath.Join(srcDir, "manifest.json")
 	b, err := os.ReadFile(manifestPath)
 	if err != nil {
-		log.Printf("vm.offline_assets: disabled (read manifest): %v", err)
+		log.Printf("vm.offline_assets: disabled (read runtime-manifest.json): %v", err)
 		return nil, nil
 	}
 
-	var m offlineAssetsManifest
+	var m runtimeManifest
 	if err := json.Unmarshal(b, &m); err != nil {
-		log.Printf("vm.offline_assets: disabled (invalid manifest): %v", err)
+		log.Printf("vm.offline_assets: disabled (invalid runtime-manifest.json): %v", err)
 		return nil, nil
 	}
 	if m.SchemaVersion != 1 {
 		log.Printf("vm.offline_assets: disabled (unsupported schema_version=%d)", m.SchemaVersion)
 		return nil, nil
 	}
+	if m.OfflineAssets == nil {
+		return nil, nil
+	}
 
-	vm, err := validateOfflineAsset(m.VMImage, "vm_image")
+	offlineDir := strings.TrimSpace(m.OfflineAssets.Dir)
+	if offlineDir == "" {
+		return nil, nil
+	}
+	if filepath.Base(offlineDir) != offlineDir {
+		log.Printf("vm.offline_assets: disabled (invalid offline_assets.dir=%q)", offlineDir)
+		return nil, nil
+	}
+	if offlineDir == "." || offlineDir == string(filepath.Separator) || strings.Contains(offlineDir, string(filepath.Separator)) {
+		log.Printf("vm.offline_assets: disabled (invalid offline_assets.dir=%q)", offlineDir)
+		return nil, nil
+	}
+
+	srcDir := findBundledDir(offlineDir)
+	if srcDir == "" {
+		return nil, nil
+	}
+
+	vm, err := validateOfflineAsset(m.OfflineAssets.VMImage, "vm_image")
 	if err != nil {
 		log.Printf("vm.offline_assets: disabled (vm_image invalid): %v", err)
 		return nil, nil
 	}
-	nerdctl, err := validateOfflineAsset(m.ContainerdArchive, "containerd_archive")
+	nerdctl, err := validateOfflineAsset(m.OfflineAssets.ContainerdArchive, "containerd_archive")
 	if err != nil {
 		log.Printf("vm.offline_assets: disabled (containerd_archive invalid): %v", err)
 		return nil, nil
@@ -105,7 +133,7 @@ func (s *Server) prepareOfflineAssets() (*offlineAssets, error) {
 	}
 
 	images := make(map[string]string)
-	for _, img := range m.Images {
+	for _, img := range m.OfflineAssets.Images {
 		img, err := validateOfflineImage(img)
 		if err != nil {
 			log.Printf("vm.offline_assets: skip image (invalid): %v", err)
@@ -139,6 +167,23 @@ func (s *Server) offlineImageTarPath(imageRef string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(assets.Images[imageRef]), nil
+}
+
+func findBundledRuntimeManifestPath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	candidates := []string{
+		filepath.Join(filepath.Dir(exe), "runtime-manifest.json"),
+		filepath.Clean(filepath.Join(filepath.Dir(exe), "..", "Resources", "runtime-manifest.json")),
+	}
+	for _, p := range candidates {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			return p
+		}
+	}
+	return ""
 }
 
 func validateOfflineAsset(e offlineAssetEntry, name string) (offlineAssetEntry, error) {
