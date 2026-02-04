@@ -25,8 +25,9 @@ WORKDIR /app
 # Claude Agent SDK relies on Claude Code CLI ("claude") via SubprocessCLITransport.
 COPY --from=claude-code /usr/local/bin/node /usr/local/bin/node
 COPY --from=claude-code /usr/local/lib/node_modules/@anthropic-ai /usr/local/lib/node_modules/@anthropic-ai
-COPY --from=claude-code /usr/local/bin/agent-browser /usr/local/bin/agent-browser.real
 COPY --from=claude-code /usr/local/lib/node_modules/agent-browser /usr/local/lib/node_modules/agent-browser
+
+RUN ln -s /usr/local/lib/node_modules/agent-browser/bin/agent-browser /usr/local/bin/agent-browser.real
 
 RUN printf '%s\n' \
     '#!/bin/sh' \
