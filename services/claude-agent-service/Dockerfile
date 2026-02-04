@@ -3,7 +3,8 @@ FROM node:20-slim AS claude-code
 ARG TARGETOS
 ARG TARGETARCH
 
-RUN npm install -g @anthropic-ai/claude-code \
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN npm install -g @anthropic-ai/claude-code agent-browser@0.8.2 \
     && npm cache clean --force \
     && if [ -n "${TARGETOS:-}" ] && [ -n "${TARGETARCH:-}" ]; then \
         case "${TARGETOS}/${TARGETARCH}" in \
@@ -24,6 +25,8 @@ WORKDIR /app
 # Claude Agent SDK relies on Claude Code CLI ("claude") via SubprocessCLITransport.
 COPY --from=claude-code /usr/local/bin/node /usr/local/bin/node
 COPY --from=claude-code /usr/local/lib/node_modules/@anthropic-ai /usr/local/lib/node_modules/@anthropic-ai
+COPY --from=claude-code /usr/local/bin/agent-browser /usr/local/bin/agent-browser.real
+COPY --from=claude-code /usr/local/lib/node_modules/agent-browser /usr/local/lib/node_modules/agent-browser
 
 RUN printf '%s\n' \
     '#!/bin/sh' \
@@ -36,9 +39,6 @@ RUN pip install --no-cache-dir uv \
 
 # agent-browser: preinstall (pinned) and force CDP-attach mode via wrapper.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-RUN npm install -g agent-browser@0.8.2 \
-    && npm cache clean --force \
-    && mv /usr/local/bin/agent-browser /usr/local/bin/agent-browser.real
 COPY services/claude-agent-service/agent-browser-wrapper.py /usr/local/bin/agent-browser
 RUN chmod +x /usr/local/bin/agent-browser
 
