@@ -68,11 +68,11 @@ maybe_codesign_adhoc() {
     identity="${NOUS_CODESIGN_IDENTITY}"
     mode="explicit"
   elif command -v security >/dev/null 2>&1; then
-    identity="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Developer ID Application:/{print $3; exit}')"
+    identity="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Developer ID Application:/{print $2; exit}')"
     if [ -n "${identity}" ]; then
       mode="developer_id"
     else
-      identity="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development:/{print $3; exit}')"
+      identity="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development:/{print $2; exit}')"
       if [ -n "${identity}" ]; then
         mode="apple_development"
       else
@@ -102,20 +102,20 @@ maybe_codesign_adhoc() {
   local res_dir="${app}/Contents/Resources"
   for f in nous-agent-runnerd nous-guest-runnerd; do
     if [ -f "${res_dir}/${f}" ]; then
-      codesign "${exec_flags[@]}" "${res_dir}/${f}" >/dev/null 2>&1 || fail "codesign failed: ${res_dir}/${f}"
+      codesign "${exec_flags[@]}" "${res_dir}/${f}" || fail "codesign failed: ${res_dir}/${f}"
     fi
   done
   if [ -f "${res_dir}/limactl" ]; then
     # AVF (vmType=vz) requires com.apple.security.virtualization entitlement on macOS 14+.
     local entitlements="${ROOT_DIR}/references/lima/vz.entitlements"
     if [ -f "$entitlements" ]; then
-      codesign "${exec_flags[@]}" --entitlements "$entitlements" "${res_dir}/limactl" >/dev/null 2>&1 || fail "codesign failed: ${res_dir}/limactl"
+      codesign "${exec_flags[@]}" --entitlements "$entitlements" "${res_dir}/limactl" || fail "codesign failed: ${res_dir}/limactl"
     else
       fail "missing entitlements file: ${entitlements}"
     fi
   fi
 
-  codesign "${app_flags[@]}" "$app" >/dev/null 2>&1 || fail "codesign failed: $app"
+  codesign "${app_flags[@]}" "$app" || fail "codesign failed: $app"
 }
 
 build_runtime_binaries_if_needed() {
