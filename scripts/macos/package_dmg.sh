@@ -22,8 +22,13 @@ Usage: $(basename "$0") <app_path>
   - a SwiftPM package directory (contains Package.swift); script will create a minimal .app wrapper
 
 Env:
-  NOUS_CODESIGN_IDENTITY   codesign identity (default: ad-hoc "-")
+  NOUS_CODESIGN_IDENTITY   codesign identity (disables auto-detect)
   NOUS_DISABLE_CODESIGN=1  skip codesign
+
+Auto-detect order (when NOUS_CODESIGN_IDENTITY is unset):
+  1) Developer ID Application (notarizable)
+  2) Apple Development (Personal Team)
+  3) ad-hoc ("-")
 
 Output:
   dist/<AppName>.dmg
@@ -56,26 +61,61 @@ maybe_codesign_adhoc() {
   if ! command -v codesign >/dev/null 2>&1; then
     return 0
   fi
-  local identity="${NOUS_CODESIGN_IDENTITY:--}"
+
+  local identity=""
+  local mode=""
+  if [ -n "${NOUS_CODESIGN_IDENTITY:-}" ]; then
+    identity="${NOUS_CODESIGN_IDENTITY}"
+    mode="explicit"
+  elif command -v security >/dev/null 2>&1; then
+    identity="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Developer ID Application:/{print $3; exit}')"
+    if [ -n "${identity}" ]; then
+      mode="developer_id"
+    else
+      identity="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development:/{print $3; exit}')"
+      if [ -n "${identity}" ]; then
+        mode="apple_development"
+      else
+        identity="-"
+        mode="adhoc"
+      fi
+    fi
+  else
+    identity="-"
+    mode="adhoc"
+  fi
+
+  if [ "${mode}" != "adhoc" ] && [ "${mode}" != "explicit" ]; then
+    echo "info: auto-selected codesign identity (${mode}): ${identity}" >&2
+  fi
+
+  local -a base_flags=(--force --sign "${identity}")
+  local -a exec_flags=("${base_flags[@]}" --timestamp=none)
+  local -a app_flags=("${base_flags[@]}" --timestamp=none)
+
+  if [ "${mode}" = "developer_id" ]; then
+    exec_flags=("${base_flags[@]}" --timestamp --options runtime)
+    app_flags=("${base_flags[@]}" --timestamp --options runtime)
+  fi
 
   # Sign injected helper executables (avoid --deep; SwiftPM resource bundles may be minimal dirs).
   local res_dir="${app}/Contents/Resources"
   for f in nous-agent-runnerd nous-guest-runnerd; do
     if [ -f "${res_dir}/${f}" ]; then
-      codesign --force --sign "$identity" --timestamp=none "${res_dir}/${f}" >/dev/null 2>&1 || fail "codesign failed: ${res_dir}/${f}"
+      codesign "${exec_flags[@]}" "${res_dir}/${f}" >/dev/null 2>&1 || fail "codesign failed: ${res_dir}/${f}"
     fi
   done
   if [ -f "${res_dir}/limactl" ]; then
     # AVF (vmType=vz) requires com.apple.security.virtualization entitlement on macOS 14+.
     local entitlements="${ROOT_DIR}/references/lima/vz.entitlements"
     if [ -f "$entitlements" ]; then
-      codesign --force --sign "$identity" --timestamp=none --entitlements "$entitlements" "${res_dir}/limactl" >/dev/null 2>&1 || fail "codesign failed: ${res_dir}/limactl"
+      codesign "${exec_flags[@]}" --entitlements "$entitlements" "${res_dir}/limactl" >/dev/null 2>&1 || fail "codesign failed: ${res_dir}/limactl"
     else
       fail "missing entitlements file: ${entitlements}"
     fi
   fi
 
-  codesign --force --sign "$identity" --timestamp=none "$app" >/dev/null 2>&1 || fail "codesign failed: $app"
+  codesign "${app_flags[@]}" "$app" >/dev/null 2>&1 || fail "codesign failed: $app"
 }
 
 build_runtime_binaries_if_needed() {
