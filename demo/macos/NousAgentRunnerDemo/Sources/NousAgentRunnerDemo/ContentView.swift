@@ -158,7 +158,7 @@ private struct AskSheetView: View {
 
 struct ContentView: View {
     @State private var statusText = "Not loaded"
-    @State private var imageRef = "docker.io/gravtice/nous-claude-agent-service:0.2.5"
+    @State private var imageRef = "docker.io/gravtice/nous-claude-agent-service:0.2.6"
 
     private enum SystemPromptMode: String, CaseIterable, Identifiable {
         case builtin
