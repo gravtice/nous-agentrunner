@@ -30,7 +30,7 @@
 
 ## 2. 范围与版本对齐
 
-- 产品版本：`NOUS_AGENT_RUNNER_VERSION=0.2.4`（见 `VERSION`）。
+- 产品版本：`NOUS_AGENT_RUNNER_VERSION=0.2.4`（该文档对应版本）。
 - 协议版本：以 Runner `GET /v1/system/status` 返回为准（ASMP/ASP v0.2.0 + ASMP v0.3.0 skills 能力等）。
 - 兼容性策略：
   - SDK 默认 **忽略响应中的未知字段**（前向兼容）。
