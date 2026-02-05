@@ -133,6 +133,10 @@ public final class NousAgentRunnerClient {
         try await requestJSON(method: "POST", path: "/v1/shares", body: ["host_path": hostPath], timeoutSeconds: 60)
     }
 
+    public func setShareExcludes(_ excludes: [String]) async throws -> [String: Any] {
+        try await requestJSON(method: "PUT", path: "/v1/shares/excludes", body: ["excludes": excludes], timeoutSeconds: 60)
+    }
+
     public func listSkills() async throws -> [String: Any] {
         try await requestJSON(method: "GET", path: "/v1/skills", body: nil, timeoutSeconds: 30)
     }

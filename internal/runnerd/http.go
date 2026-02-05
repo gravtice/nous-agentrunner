@@ -17,6 +17,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/shares", s.withAuth(s.handleSharesList))
 	mux.HandleFunc("POST /v1/shares", s.withAuth(s.handleSharesAdd))
 	mux.HandleFunc("DELETE /v1/shares/{share_id}", s.withAuth(s.handleSharesDelete))
+	mux.HandleFunc("PUT /v1/shares/excludes", s.withAuth(s.handleSharesExcludesSet))
 
 	mux.HandleFunc("POST /v1/images/pull", s.withAuth(s.handleImagesPull))
 	mux.HandleFunc("POST /v1/images/import", s.withAuth(s.handleImagesImport))

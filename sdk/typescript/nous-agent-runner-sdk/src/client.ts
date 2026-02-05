@@ -53,6 +53,15 @@ export class NousAgentRunnerClient {
     );
   }
 
+  setShareExcludes(excludes: string[]) {
+    return this.requestJSON(
+      "PUT",
+      "/v1/shares/excludes",
+      { excludes },
+      60_000,
+    );
+  }
+
   listSkills() {
     return this.requestJSON("GET", "/v1/skills", undefined, 30_000);
   }
