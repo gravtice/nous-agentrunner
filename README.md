@@ -7,7 +7,7 @@ Nous Agent Runner is a lightweight runtime that lets you integrate AI agents (Cl
 ```swift
 // Create an AI agent and start chatting
 let service = try await client.createClaudeService(
-    imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.6",
+    imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.7",
     rwMounts: ["/Users/alice/Projects"],
     serviceConfig: ["system_prompt": "You are a helpful coding assistant"]
 )
@@ -79,7 +79,7 @@ let runtime = try await daemon.ensureRunning()
 let client = NousAgentRunnerClient(runtime: runtime)
 let service = try await client.createService(
     type: "claude",
-    imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.6",
+    imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.7",
     config: ClaudeServiceConfig(
         systemPrompt: "You are a helpful assistant",
         allowedTools: ["Read", "Write", "Bash"]
