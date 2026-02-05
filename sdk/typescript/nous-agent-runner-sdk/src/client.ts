@@ -101,6 +101,11 @@ export class NousAgentRunnerClient {
     return this.requestJSON("POST", "/v1/images/pull", { ref }, 1_800_000);
   }
 
+  pruneImages(opts: { all?: boolean } = {}) {
+    const body = opts.all === undefined ? undefined : { all: opts.all };
+    return this.requestJSON("POST", "/v1/images/prune", body, 1_800_000);
+  }
+
   restartVM() {
     return this.requestJSON("POST", "/v1/system/vm/restart", undefined, 1_800_000);
   }

@@ -64,6 +64,16 @@ PY
       printf "%b" "$NERDCTL_IMAGES_OUTPUT"
     fi
     ;;
+  image)
+    sub="${2:-}"
+    case "$sub" in
+      prune)
+        if [ -n "${NERDCTL_IMAGE_PRUNE_OUTPUT:-}" ]; then
+          printf "%b" "$NERDCTL_IMAGE_PRUNE_OUTPUT"
+        fi
+        ;;
+    esac
+    ;;
   load)
     if [ -n "${NERDCTL_LOAD_OUTPUT:-}" ]; then
       printf "%b" "$NERDCTL_LOAD_OUTPUT"
@@ -123,6 +133,79 @@ func TestM2_HandleImagesList_ParsesNerdctlOutput(t *testing.T) {
 	}
 	if strings.Join(out.Images, ",") != "local/a:1,local/b:2" {
 		t.Fatalf("unexpected images: %#v", out.Images)
+	}
+}
+
+func TestM2_HandleImagePrune_DefaultsAll(t *testing.T) {
+	binDir := t.TempDir()
+	_ = writeFakeNerdctl(t, binDir)
+
+	logPath := filepath.Join(t.TempDir(), "nerdctl.log")
+	t.Setenv("NERDCTL_LOG", logPath)
+	t.Setenv("NERDCTL_IMAGE_PRUNE_OUTPUT", "Total reclaimed space: 123MB\n")
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+
+	s, err := NewServer(Config{ListenAddr: "127.0.0.1", ListenPort: 0, StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/internal/images/prune", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /internal/images/prune: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+
+	logBytes, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read nerdctl log: %v", err)
+	}
+	log := string(logBytes)
+	if !strings.Contains(log, "image prune -a -f") {
+		t.Fatalf("expected prune -a in log, got:\n%s", log)
+	}
+}
+
+func TestM2_HandleImagePrune_AllFalse(t *testing.T) {
+	binDir := t.TempDir()
+	_ = writeFakeNerdctl(t, binDir)
+
+	logPath := filepath.Join(t.TempDir(), "nerdctl.log")
+	t.Setenv("NERDCTL_LOG", logPath)
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+
+	s, err := NewServer(Config{ListenAddr: "127.0.0.1", ListenPort: 0, StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/internal/images/prune", "application/json", bytes.NewReader([]byte(`{"all":false}`)))
+	if err != nil {
+		t.Fatalf("POST /internal/images/prune: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+
+	logBytes, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read nerdctl log: %v", err)
+	}
+	log := string(logBytes)
+	if strings.Contains(log, "image prune -a -f") {
+		t.Fatalf("did not expect prune -a in log, got:\n%s", log)
+	}
+	if !strings.Contains(log, "image prune -f") {
+		t.Fatalf("expected prune -f in log, got:\n%s", log)
 	}
 }
 

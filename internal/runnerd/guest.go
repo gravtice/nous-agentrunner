@@ -32,7 +32,7 @@ func (s *Server) ensureGuestReady(ctx context.Context) (*guestClient, error) {
 	}
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", s.cfg.GuestForwardPort)
-	client := &guestClient{baseURL: baseURL, http: &http.Client{Timeout: 30 * time.Second}}
+	client := &guestClient{baseURL: baseURL, http: &http.Client{Timeout: 10 * time.Minute}}
 	if err := step("guest.wait_health", func() error { return s.waitForGuestHealth(ctx, client, 5*time.Minute) }); err != nil {
 		return nil, err
 	}
@@ -62,4 +62,3 @@ func (s *Server) waitForGuestHealth(ctx context.Context, c *guestClient, timeout
 	}
 	return fmt.Errorf("timeout waiting for guest health")
 }
-

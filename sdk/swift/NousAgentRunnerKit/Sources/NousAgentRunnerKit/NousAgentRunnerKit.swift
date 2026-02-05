@@ -182,6 +182,16 @@ public final class NousAgentRunnerClient {
         try await requestJSON(method: "POST", path: "/v1/images/pull", body: ["ref": ref], timeoutSeconds: 1800)
     }
 
+    public func pruneImages(all: Bool? = nil) async throws -> [String: Any] {
+        let body: [String: Any]?
+        if let all {
+            body = ["all": all]
+        } else {
+            body = nil
+        }
+        return try await requestJSON(method: "POST", path: "/v1/images/prune", body: body, timeoutSeconds: 1800)
+    }
+
     public func restartVM() async throws -> [String: Any] {
         try await requestJSON(method: "POST", path: "/v1/system/vm/restart", body: nil, timeoutSeconds: 1800)
     }
