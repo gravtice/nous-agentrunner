@@ -18,6 +18,11 @@
   - Container 内不可访问（同样以 EACCES 表现）。
   - 所有通过 API/配置进入系统的路径参数（如 `rw_mounts`、大文件 `path`、技能源路径等）若命中黑名单，直接拒绝（`PATH_NOT_ALLOWED`）。
 - `excludes` **只针对目录**；不支持文件级别、不支持 glob/regex。
+- 额外提供一组**强制内置 excludes**（不可删除）：
+  - `<HOME>/.claude`
+  - `<HOME>/.codex`
+  - `HOME` 取 Host 上运行 runnerd 的用户 home（随安装机器变化，不写死开发机路径）。
+  - 仅当目录存在且满足 excludes 校验规则时加入 effective excludes。
 
 ## 非目标（明确不做）
 
@@ -44,6 +49,7 @@
 
 - `excludes` 为字符串数组，每项为 Host 绝对路径目录。
 - 语义：前缀匹配。例：排除 `/Users/zengjice/.claude` 等价于排除该目录及其所有子路径。
+- `shares.json` 仅持久化**用户自定义** `excludes`；强制内置 excludes 不写入该文件，但会体现在 `GET /v1/shares` 的返回（effective excludes）。
 
 ## 归一化与校验（Host 侧）
 
@@ -144,17 +150,17 @@
 ## 示例
 
 - share：`/Users`
-- excludes：`["/Users/zengjice/.claude"]`
+- builtin excludes：`["<HOME>/.claude","<HOME>/.codex"]`
+- user excludes：`["<HOME>/Work/private"]`（示例）
 
 预期：
 
-- VM：访问 `/Users/zengjice/.claude` 返回 `Permission denied`（EACCES）
+- VM：访问 `<HOME>/.claude` / `<HOME>/.codex` / `<HOME>/Work/private` 返回 `Permission denied`（EACCES）
 - Container：访问同路径返回 `Permission denied`（EACCES）
-- API：任何请求引用该路径（或其子路径）返回 `PATH_NOT_ALLOWED`
+- API：任何请求引用上述路径（或其子路径）返回 `PATH_NOT_ALLOWED`
 
 ## 已知限制（接受，不加戏）
 
 - EACCES 语义下，父目录仍能看到被排除目录名（不是 ENOENT）。
 - 该机制不对 VM 内特权进程提供强隔离；目标是阻断普通 service 进程访问。
 - excludes 为“路径前缀”语义，不做 inode 等价/别名路径穷举（保持简单、可预测）。
-

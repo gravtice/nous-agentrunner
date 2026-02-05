@@ -18,7 +18,8 @@ type Server struct {
 	mu                 sync.Mutex
 	skillsMu           sync.Mutex
 	shares             []shareEntry
-	shareExcludes      []excludeEntry
+	shareExcludes      []excludeEntry // effective (user + builtin)
+	shareUserExcludes  []excludeEntry // persisted in shares.json
 	services           map[string]Service
 	tunnels            map[string]*tunnelEntry
 	tunnelByHostPort   map[int]string
@@ -98,25 +99,36 @@ func (s *Server) loadState() error {
 }
 
 func (s *Server) loadShares() error {
-	b, err := os.ReadFile(s.sharesPath())
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("read shares: %w", err)
+	b, readErr := os.ReadFile(s.sharesPath())
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return fmt.Errorf("read shares: %w", readErr)
 	}
 
 	var sf sharesFile
-	if err == nil {
+	if readErr == nil {
 		if err := json.Unmarshal(b, &sf); err != nil {
 			return fmt.Errorf("parse shares: %w", err)
 		}
 	}
 
-	changed, entries, excludes, err := normalizeShareConfig(sf.Shares, sf.Excludes, s.cfg.Paths.DefaultSharedTmpDir)
+	changedShares, entries, err := normalizeShares(sf.Shares, s.cfg.Paths.DefaultSharedTmpDir)
 	if err != nil {
 		return err
 	}
+
+	changedUserExcludes, userExcludes, err := normalizeShareExcludes(sf.Excludes, entries, s.cfg.Paths.DefaultSharedTmpDir)
+	if err != nil {
+		return err
+	}
+
+	builtinExcludes := builtinShareExcludes(entries, s.cfg.Paths.DefaultSharedTmpDir)
+	stripChanged, userExcludes := stripUserExcludesUnderBuiltin(userExcludes, builtinExcludes)
+
 	s.shares = entries
-	s.shareExcludes = excludes
-	if changed || errors.Is(err, os.ErrNotExist) {
+	s.shareUserExcludes = userExcludes
+	s.shareExcludes = mergeExcludeEntries(userExcludes, builtinExcludes)
+
+	if changedShares || changedUserExcludes || stripChanged {
 		return s.saveSharesLocked()
 	}
 	return nil
@@ -125,12 +137,12 @@ func (s *Server) loadShares() error {
 func (s *Server) saveSharesLocked() error {
 	sf := sharesFile{
 		Shares:   make([]Share, 0, len(s.shares)),
-		Excludes: make([]string, 0, len(s.shareExcludes)),
+		Excludes: make([]string, 0, len(s.shareUserExcludes)),
 	}
 	for _, e := range s.shares {
 		sf.Shares = append(sf.Shares, e.Share)
 	}
-	for _, e := range s.shareExcludes {
+	for _, e := range s.shareUserExcludes {
 		sf.Excludes = append(sf.Excludes, e.HostPath)
 	}
 	tmp := s.sharesPath() + ".tmp"

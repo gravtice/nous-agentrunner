@@ -98,18 +98,6 @@ func normalizeShares(in []Share, defaultSharedTmp string) (changed bool, out []s
 	return changed, out, nil
 }
 
-func normalizeShareConfig(inShares []Share, inExcludes []string, defaultSharedTmp string) (changed bool, outShares []shareEntry, outExcludes []excludeEntry, _ error) {
-	changedShares, shares, err := normalizeShares(inShares, defaultSharedTmp)
-	if err != nil {
-		return false, nil, nil, err
-	}
-	changedExcludes, excludes, err := normalizeShareExcludes(inExcludes, shares, defaultSharedTmp)
-	if err != nil {
-		return false, nil, nil, err
-	}
-	return changedShares || changedExcludes, shares, excludes, nil
-}
-
 func normalizeShareExcludes(in []string, shares []shareEntry, defaultSharedTmp string) (changed bool, out []excludeEntry, _ error) {
 	if len(in) == 0 {
 		return false, nil, nil
@@ -201,6 +189,100 @@ func normalizeShareExcludes(in []string, shares []shareEntry, defaultSharedTmp s
 		changed = true
 	}
 	return changed, out, nil
+}
+
+func builtinShareExcludes(shares []shareEntry, defaultSharedTmp string) []excludeEntry {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return nil
+	}
+
+	cands := []string{
+		filepath.Join(home, ".claude"),
+		filepath.Join(home, ".codex"),
+	}
+
+	out := make([]excludeEntry, 0, len(cands))
+	for _, p := range cands {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		_, entries, err := normalizeShareExcludes([]string{p}, shares, defaultSharedTmp)
+		if err != nil || len(entries) == 0 {
+			continue
+		}
+		out = append(out, entries[0])
+	}
+
+	sort.Slice(out, func(i, j int) bool { return out[i].CanonicalHostPath < out[j].CanonicalHostPath })
+	collapsed := make([]excludeEntry, 0, len(out))
+	for _, e := range out {
+		if len(collapsed) > 0 && hasPathPrefix(e.CanonicalHostPath, collapsed[len(collapsed)-1].CanonicalHostPath) {
+			continue
+		}
+		collapsed = append(collapsed, e)
+	}
+	return collapsed
+}
+
+func stripUserExcludesUnderBuiltin(user []excludeEntry, builtin []excludeEntry) (changed bool, out []excludeEntry) {
+	if len(user) == 0 || len(builtin) == 0 {
+		return false, user
+	}
+
+	out = make([]excludeEntry, 0, len(user))
+	for _, e := range user {
+		builtIn := false
+		for _, b := range builtin {
+			if hasPathPrefix(e.CanonicalHostPath, b.CanonicalHostPath) {
+				builtIn = true
+				break
+			}
+		}
+		if builtIn {
+			changed = true
+			continue
+		}
+		out = append(out, e)
+	}
+	return changed, out
+}
+
+func mergeExcludeEntries(user []excludeEntry, builtin []excludeEntry) []excludeEntry {
+	if len(user) == 0 {
+		return append([]excludeEntry(nil), builtin...)
+	}
+	if len(builtin) == 0 {
+		return append([]excludeEntry(nil), user...)
+	}
+
+	out := make([]excludeEntry, 0, len(user)+len(builtin))
+	i := 0
+	j := 0
+	for i < len(user) || j < len(builtin) {
+		var next excludeEntry
+		if j >= len(builtin) || (i < len(user) && user[i].CanonicalHostPath <= builtin[j].CanonicalHostPath) {
+			next = user[i]
+			i++
+		} else {
+			next = builtin[j]
+			j++
+		}
+
+		if len(out) > 0 {
+			prev := out[len(out)-1]
+			if next.CanonicalHostPath == prev.CanonicalHostPath {
+				continue
+			}
+			if hasPathPrefix(next.CanonicalHostPath, prev.CanonicalHostPath) {
+				continue
+			}
+		}
+
+		out = append(out, next)
+	}
+	return out
 }
 
 func makeShareID(canon string) string {
@@ -320,15 +402,20 @@ func (s *Server) handleSharesExcludesSet(w http.ResponseWriter, r *http.Request)
 	current := append([]excludeEntry(nil), s.shareExcludes...)
 	s.mu.Unlock()
 
-	_, out, err := normalizeShareExcludes(req.Excludes, shares, s.cfg.Paths.DefaultSharedTmpDir)
+	_, userExcludes, err := normalizeShareExcludes(req.Excludes, shares, s.cfg.Paths.DefaultSharedTmpDir)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error(), nil)
 		return
 	}
 
+	builtin := builtinShareExcludes(shares, s.cfg.Paths.DefaultSharedTmpDir)
+	_, userExcludes = stripUserExcludesUnderBuiltin(userExcludes, builtin)
+	out := mergeExcludeEntries(userExcludes, builtin)
+
 	vmRestartRequired := !equalExcludeEntries(current, out)
 
 	s.mu.Lock()
+	s.shareUserExcludes = userExcludes
 	s.shareExcludes = out
 	if err := s.saveSharesLocked(); err != nil {
 		s.mu.Unlock()
@@ -402,6 +489,10 @@ func (s *Server) handleSharesAdd(w http.ResponseWriter, r *http.Request) {
 	s.shares = append(s.shares, shareEntry{Share: share, CanonicalHostPath: canon})
 	sort.Slice(s.shares, func(i, j int) bool { return s.shares[i].CanonicalHostPath < s.shares[j].CanonicalHostPath })
 
+	builtin := builtinShareExcludes(s.shares, s.cfg.Paths.DefaultSharedTmpDir)
+	_, s.shareUserExcludes = stripUserExcludesUnderBuiltin(s.shareUserExcludes, builtin)
+	s.shareExcludes = mergeExcludeEntries(s.shareUserExcludes, builtin)
+
 	if err := s.saveSharesLocked(); err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to persist shares", map[string]any{"error": err.Error()})
 		return
@@ -432,18 +523,21 @@ func (s *Server) handleSharesDelete(w http.ResponseWriter, r *http.Request) {
 
 	remainingShares := append([]shareEntry(nil), s.shares...)
 	remainingShares = append(remainingShares[:i], remainingShares[i+1:]...)
-	currentExcludes := make([]string, 0, len(s.shareExcludes))
-	for _, ex := range s.shareExcludes {
+	currentExcludes := make([]string, 0, len(s.shareUserExcludes))
+	for _, ex := range s.shareUserExcludes {
 		currentExcludes = append(currentExcludes, ex.HostPath)
 	}
-	_, normalizedExcludes, err := normalizeShareExcludes(currentExcludes, remainingShares, s.cfg.Paths.DefaultSharedTmpDir)
+	_, normalizedUserExcludes, err := normalizeShareExcludes(currentExcludes, remainingShares, s.cfg.Paths.DefaultSharedTmpDir)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "share cannot be removed due to excludes", map[string]any{"error": err.Error()})
 		return
 	}
 
 	s.shares = remainingShares
-	s.shareExcludes = normalizedExcludes
+	s.shareUserExcludes = normalizedUserExcludes
+	builtin := builtinShareExcludes(s.shares, s.cfg.Paths.DefaultSharedTmpDir)
+	_, s.shareUserExcludes = stripUserExcludesUnderBuiltin(s.shareUserExcludes, builtin)
+	s.shareExcludes = mergeExcludeEntries(s.shareUserExcludes, builtin)
 	if err := s.saveSharesLocked(); err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to persist shares", map[string]any{"error": err.Error()})
 		return
