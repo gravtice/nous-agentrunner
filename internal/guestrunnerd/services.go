@@ -1,6 +1,7 @@
 package guestrunnerd
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -9,7 +10,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +26,7 @@ type createServiceReq struct {
 	ImageRef         string            `json:"image_ref"`
 	Resources        resources         `json:"resources"`
 	Shares           []string          `json:"shares"`
+	ShareExcludes    []string          `json:"share_excludes"`
 	RWMounts         []string          `json:"rw_mounts"`
 	Env              map[string]string `json:"env"`
 	ServiceConfigB64 string            `json:"service_config_b64"`
@@ -133,6 +137,10 @@ func waitHTTPHealth(ctx context.Context, port int, timeout time.Duration) error 
 }
 
 func (s *Server) startServiceContainer(ctx context.Context, containerName string, port int, req createServiceReq) error {
+	if err := s.applyShareExcludes(req.Shares, req.ShareExcludes); err != nil {
+		return err
+	}
+
 	shareDirsJSON, _ := json.Marshal(req.Shares)
 	shareDirsB64 := base64.StdEncoding.EncodeToString(shareDirsJSON)
 	args := []string{
@@ -206,6 +214,17 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 		skillsMount = "/tmp/.nous-skills"
 		args = append(args, "--mount", fmt.Sprintf("type=bind,src=%s,dst=%s,rw", skillsDir, skillsMount))
 	}
+	for _, p := range req.ShareExcludes {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		p = filepath.Clean(p)
+		if !filepath.IsAbs(p) {
+			continue
+		}
+		args = append(args, "--mount", fmt.Sprintf("type=bind,src=%s,dst=%s,ro", denyDirPath(), p))
+	}
 
 	args = append(args, req.ImageRef)
 	if req.Type == "claude" && skillsMount != "" {
@@ -217,6 +236,131 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func denyDirPath() string { return "/run/nous-deny/dir" }
+
+func (s *Server) applyShareExcludes(shares []string, excludes []string) error {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	if len(excludes) == 0 {
+		return nil
+	}
+
+	shareRoots := make([]string, 0, len(shares))
+	for _, p := range shares {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		p = filepath.Clean(p)
+		if !filepath.IsAbs(p) {
+			continue
+		}
+		shareRoots = append(shareRoots, p)
+	}
+
+	if err := ensureDenyDir(); err != nil {
+		return err
+	}
+
+	for _, p := range excludes {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		p = filepath.Clean(p)
+		if !filepath.IsAbs(p) {
+			return fmt.Errorf("share_exclude must be absolute: %q", p)
+		}
+		if !isUnderAnyShare(p, shareRoots) {
+			return fmt.Errorf("share_exclude not under shares: %q", p)
+		}
+		if err := s.mountDenyOverlay(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureDenyDir() error {
+	base := "/run/nous-deny"
+	dir := denyDirPath()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("mkdir %q: %w", dir, err)
+	}
+	if err := os.Chmod(base, 0o700); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("chmod %q: %w", base, err)
+	}
+	if err := os.Chmod(dir, 0o000); err != nil {
+		return fmt.Errorf("chmod %q: %w", dir, err)
+	}
+	return nil
+}
+
+func isUnderAnyShare(path string, shares []string) bool {
+	for _, root := range shares {
+		if hasPathPrefix(path, root) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPathPrefix(path, prefix string) bool {
+	if path == prefix {
+		return true
+	}
+	prefix = strings.TrimRight(prefix, string(filepath.Separator))
+	if prefix == "" {
+		return false
+	}
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	if len(path) == len(prefix) {
+		return true
+	}
+	return path[len(prefix)] == byte(filepath.Separator)
+}
+
+func (s *Server) mountDenyOverlay(path string) error {
+	path = filepath.Clean(path)
+
+	s.mu.Lock()
+	if s.shareExcludeMounts[path] {
+		s.mu.Unlock()
+		return nil
+	}
+	s.mu.Unlock()
+
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("share_exclude not accessible: %q", path)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("share_exclude must not be a symlink: %q", path)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("share_exclude must be a directory: %q", path)
+	}
+
+	cmd := exec.Command("mount", "--bind", denyDirPath(), path)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("mount deny overlay: %q: %s", path, msg)
+	}
+
+	s.mu.Lock()
+	s.shareExcludeMounts[path] = true
+	s.mu.Unlock()
 	return nil
 }
 

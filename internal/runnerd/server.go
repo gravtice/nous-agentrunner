@@ -18,6 +18,7 @@ type Server struct {
 	mu                 sync.Mutex
 	skillsMu           sync.Mutex
 	shares             []shareEntry
+	shareExcludes      []excludeEntry
 	services           map[string]Service
 	tunnels            map[string]*tunnelEntry
 	tunnelByHostPort   map[int]string
@@ -50,6 +51,11 @@ type shareEntry struct {
 	CanonicalHostPath string
 }
 
+type excludeEntry struct {
+	HostPath          string
+	CanonicalHostPath string
+}
+
 type Share struct {
 	ShareID  string `json:"share_id"`
 	HostPath string `json:"host_path"`
@@ -68,7 +74,8 @@ type Service struct {
 }
 
 type sharesFile struct {
-	Shares []Share `json:"shares"`
+	Shares   []Share  `json:"shares"`
+	Excludes []string `json:"excludes,omitempty"`
 }
 
 type servicesFile struct {
@@ -103,11 +110,12 @@ func (s *Server) loadShares() error {
 		}
 	}
 
-	changed, entries, err := normalizeShares(sf.Shares, s.cfg.Paths.DefaultSharedTmpDir)
+	changed, entries, excludes, err := normalizeShareConfig(sf.Shares, sf.Excludes, s.cfg.Paths.DefaultSharedTmpDir)
 	if err != nil {
 		return err
 	}
 	s.shares = entries
+	s.shareExcludes = excludes
 	if changed || errors.Is(err, os.ErrNotExist) {
 		return s.saveSharesLocked()
 	}
@@ -115,9 +123,15 @@ func (s *Server) loadShares() error {
 }
 
 func (s *Server) saveSharesLocked() error {
-	sf := sharesFile{Shares: make([]Share, 0, len(s.shares))}
+	sf := sharesFile{
+		Shares:   make([]Share, 0, len(s.shares)),
+		Excludes: make([]string, 0, len(s.shareExcludes)),
+	}
 	for _, e := range s.shares {
 		sf.Shares = append(sf.Shares, e.Share)
+	}
+	for _, e := range s.shareExcludes {
+		sf.Excludes = append(sf.Excludes, e.HostPath)
 	}
 	tmp := s.sharesPath() + ".tmp"
 	b, err := json.MarshalIndent(sf, "", "  ")

@@ -17,6 +17,8 @@ type Server struct {
 
 	tunnels          map[string]*tunnelEntry
 	tunnelByHostPort map[int]string
+
+	shareExcludeMounts map[string]bool // exclude path -> mounted deny overlay
 }
 
 type Config struct {
@@ -53,8 +55,9 @@ func NewServer(cfg Config) (*Server, error) {
 		state: State{
 			Services: make(map[string]Service),
 		},
-		tunnels:          make(map[string]*tunnelEntry),
-		tunnelByHostPort: make(map[int]string),
+		tunnels:            make(map[string]*tunnelEntry),
+		tunnelByHostPort:   make(map[int]string),
+		shareExcludeMounts: make(map[string]bool),
 	}
 	if err := s.loadState(); err != nil {
 		return nil, err

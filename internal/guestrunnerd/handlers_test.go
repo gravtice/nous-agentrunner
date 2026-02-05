@@ -229,6 +229,10 @@ func TestM2_HandleServiceCreate_BuildsMounts(t *testing.T) {
 	if err := os.MkdirAll(rwDir, 0o700); err != nil {
 		t.Fatalf("mkdir rw: %v", err)
 	}
+	excludeDir := filepath.Join(shareDir, "excluded")
+	if err := os.MkdirAll(excludeDir, 0o700); err != nil {
+		t.Fatalf("mkdir excluded: %v", err)
+	}
 
 	cfgB64 := base64.StdEncoding.EncodeToString([]byte(`{"k":"v"}`))
 	reqBody, _ := json.Marshal(createServiceReq{
@@ -236,6 +240,7 @@ func TestM2_HandleServiceCreate_BuildsMounts(t *testing.T) {
 		Type:             "claude",
 		ImageRef:         "local/claude-agent-service:0.1.0",
 		Shares:           []string{shareDir},
+		ShareExcludes:    []string{excludeDir},
 		RWMounts:         []string{rwDir},
 		Env:              map[string]string{"ANTHROPIC_API_KEY": "shh"},
 		ServiceConfigB64: cfgB64,
@@ -269,6 +274,9 @@ func TestM2_HandleServiceCreate_BuildsMounts(t *testing.T) {
 	}
 	if !strings.Contains(log, "type=bind,src="+rwDir+",dst="+rwDir+",rw") {
 		t.Fatalf("expected rw mount in log, got:\n%s", log)
+	}
+	if !strings.Contains(log, "type=bind,src=/run/nous-deny/dir,dst="+excludeDir+",ro") {
+		t.Fatalf("expected exclude mount in log, got:\n%s", log)
 	}
 	if !strings.Contains(log, "-e NOUS_RUNNER_MAX_INLINE_BYTES=1234") {
 		t.Fatalf("expected max bytes env in log, got:\n%s", log)

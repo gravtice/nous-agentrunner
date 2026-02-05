@@ -10,9 +10,9 @@ func TestM1_NormalizeShares_IncludesDefaultTmp(t *testing.T) {
 	shareDir := t.TempDir()
 	defaultTmp := filepath.Join(t.TempDir(), "SharedTmp")
 
-	changed, out, err := normalizeShares([]Share{{HostPath: shareDir}}, defaultTmp)
+	changed, out, _, err := normalizeShareConfig([]Share{{HostPath: shareDir}}, nil, defaultTmp)
 	if err != nil {
-		t.Fatalf("normalizeShares: %v", err)
+		t.Fatalf("normalizeShareConfig: %v", err)
 	}
 	if !changed {
 		t.Fatalf("changed=false, want true")
@@ -97,5 +97,44 @@ func TestM1_ValidateAllowedPath_RejectsSymlinkEscape(t *testing.T) {
 	}
 	if _, _, ok := s.validateAllowedPath(escapedPath); ok {
 		t.Fatalf("validateAllowedPath unexpectedly allowed symlink-escaped path %q", escapedPath)
+	}
+}
+
+func TestM1_ValidateAllowedPath_RejectsExcludedDir(t *testing.T) {
+	shareDir := t.TempDir()
+	excludeDir := filepath.Join(shareDir, "excluded")
+	if err := os.MkdirAll(excludeDir, 0o700); err != nil {
+		t.Fatalf("mkdir excluded: %v", err)
+	}
+	allowedDir := filepath.Join(shareDir, "allowed")
+	if err := os.MkdirAll(allowedDir, 0o700); err != nil {
+		t.Fatalf("mkdir allowed: %v", err)
+	}
+
+	defaultTmp := filepath.Join(t.TempDir(), "SharedTmp")
+	_, shares, excludes, err := normalizeShareConfig([]Share{{HostPath: shareDir}}, []string{excludeDir}, defaultTmp)
+	if err != nil {
+		t.Fatalf("normalizeShareConfig: %v", err)
+	}
+
+	s := &Server{
+		shares:        shares,
+		shareExcludes: excludes,
+	}
+
+	blockedFile := filepath.Join(excludeDir, "x.txt")
+	if err := os.WriteFile(blockedFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write blocked file: %v", err)
+	}
+	if _, _, ok := s.validateAllowedPath(blockedFile); ok {
+		t.Fatalf("validateAllowedPath unexpectedly allowed excluded path %q", blockedFile)
+	}
+
+	okFile := filepath.Join(allowedDir, "y.txt")
+	if err := os.WriteFile(okFile, []byte("y"), 0o600); err != nil {
+		t.Fatalf("write allowed file: %v", err)
+	}
+	if _, _, ok := s.validateAllowedPath(okFile); !ok {
+		t.Fatalf("validateAllowedPath unexpectedly rejected allowed path %q", okFile)
 	}
 }

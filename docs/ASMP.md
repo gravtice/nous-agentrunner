@@ -162,7 +162,8 @@ TypeScript 集成可参考：`sdk/typescript/nous-agent-runner-sdk/src/runtime.t
   "shares": [
     {"share_id":"shr_...","host_path":"/Users"},
     {"share_id":"shr_...","host_path":"/Users/alice/Library/Caches/NousAgentRunner/default/SharedTmp"}
-  ]
+  ],
+  "excludes": ["/Users/alice/.claude"]
 }
 ```
 
@@ -199,6 +200,31 @@ TypeScript 集成可参考：`sdk/typescript/nous-agent-runner-sdk/src/runtime.t
 限制：
 
 - 默认临时目录对应的 Share 不允许删除（会返回 `BAD_REQUEST`）
+
+#### `PUT /v1/shares/excludes`
+
+语义：
+
+- 设置 Share excludes（目录黑名单）。命中 excludes 的目录及其子路径将对 VM/容器不可访问（权限拒绝 EACCES）。
+- excludes 变更需要重启 VM 才能对所有 Service 完整生效（会返回 `vm_restart_required=true`）。
+
+请求：
+
+```json
+{"excludes":["/Users/alice/.claude"]}
+```
+
+约束：
+
+- 只支持目录（必须存在且可访问）
+- 必须位于某个 Share 之下，且不能等于 Share root
+- 不能与默认共享临时目录（`default_temp_dir`）重叠
+
+返回：
+
+```json
+{"excludes":["/Users/alice/.claude"],"vm_restart_required":true}
+```
 
 ---
 

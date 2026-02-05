@@ -138,6 +138,10 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 	for _, e := range s.shares {
 		shares = append(shares, filepath.Clean(e.HostPath))
 	}
+	excludes := make([]string, 0, len(s.shareExcludes))
+	for _, e := range s.shareExcludes {
+		excludes = append(excludes, filepath.Clean(e.HostPath))
+	}
 	s.mu.Unlock()
 
 	gc, err := s.ensureGuestReady(r.Context())
@@ -172,6 +176,7 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		"image_ref":          req.ImageRef,
 		"resources":          req.Resources,
 		"shares":             shares,
+		"share_excludes":     excludes,
 		"rw_mounts":          rwMounts,
 		"env":                env,
 		"service_config_b64": payload,
@@ -552,6 +557,7 @@ func (s *Server) ensureOfflineImageAvailable(ctx context.Context, gc *guestClien
 func (s *Server) validateAndPrepareRWMounts(rw []string) ([]string, error) {
 	s.mu.Lock()
 	shares := append([]shareEntry(nil), s.shares...)
+	excludes := append([]excludeEntry(nil), s.shareExcludes...)
 	s.mu.Unlock()
 
 	out := make([]string, 0, len(rw))
@@ -568,6 +574,12 @@ func (s *Server) validateAndPrepareRWMounts(rw []string) ([]string, error) {
 		canonIntended, err := canonicalizePathForCreate(p)
 		if err != nil {
 			return nil, fmt.Errorf("rw_mount cannot be canonicalized: %q", p)
+		}
+
+		for _, e := range excludes {
+			if hasPathPrefix(canonIntended, e.CanonicalHostPath) {
+				return nil, fmt.Errorf("rw_mount not allowed: %q", p)
+			}
 		}
 
 		allowedMountNS := false
@@ -599,6 +611,11 @@ func (s *Server) validateAndPrepareRWMounts(rw []string) ([]string, error) {
 		canon, err := canonicalizeExistingPath(p)
 		if err != nil {
 			return nil, fmt.Errorf("rw_mount cannot be canonicalized: %q", p)
+		}
+		for _, e := range excludes {
+			if hasPathPrefix(canon, e.CanonicalHostPath) {
+				return nil, fmt.Errorf("rw_mount not allowed: %q", p)
+			}
 		}
 		// Safety: re-check after creation; avoid accidentally writing outside shares.
 		allowedCanon = false
