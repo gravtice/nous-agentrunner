@@ -57,6 +57,12 @@ type instanceConfig struct {
 }
 
 func loadInstanceID() string {
+	if raw := strings.TrimSpace(os.Getenv("NOUS_AGENT_RUNNER_INSTANCE_ID")); raw != "" {
+		if isSafeInstanceID(raw) {
+			return raw
+		}
+	}
+
 	// Zero-parameter: read config file near executable or Resources.
 	exe, err := os.Executable()
 	if err == nil {
