@@ -163,9 +163,17 @@ TypeScript 集成可参考：`sdk/typescript/nous-agent-runner-sdk/src/runtime.t
     {"share_id":"shr_...","host_path":"/Users"},
     {"share_id":"shr_...","host_path":"/Users/alice/Library/Caches/NousAgentRunner/default/SharedTmp"}
   ],
-  "excludes": ["/Users/alice/.claude"]
+  "excludes": ["/Users/alice/.claude","/Users/alice/.codex"]
 }
 ```
+
+备注：
+
+- `excludes` 为 **effective excludes**（用户配置 + 强制内置）。
+- 强制内置 excludes（存在时）：
+  - `<HOME>/.claude`
+  - `<HOME>/.codex`
+  - 不允许用户删除。
 
 #### `POST /v1/shares`
 
@@ -207,6 +215,7 @@ TypeScript 集成可参考：`sdk/typescript/nous-agent-runner-sdk/src/runtime.t
 
 - 设置 Share excludes（目录黑名单）。命中 excludes 的目录及其子路径将对 VM/容器不可访问（权限拒绝 EACCES）。
 - excludes 变更需要重启 VM 才能对所有 Service 完整生效（会返回 `vm_restart_required=true`）。
+- 无论请求内容如何，effective excludes 永远包含强制内置 `<HOME>/.claude`、`<HOME>/.codex`（目录存在时）。
 
 请求：
 
@@ -219,6 +228,7 @@ TypeScript 集成可参考：`sdk/typescript/nous-agent-runner-sdk/src/runtime.t
 - 只支持目录（必须存在且可访问）
 - 必须位于某个 Share 之下，且不能等于 Share root
 - 不能与默认共享临时目录（`default_temp_dir`）重叠
+- 请求 `excludes` 仅表示用户自定义 excludes；强制内置 excludes 会自动合并进 effective excludes
 
 返回：
 

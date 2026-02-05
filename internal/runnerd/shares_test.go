@@ -1,6 +1,10 @@
 package runnerd
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,9 +14,9 @@ func TestM1_NormalizeShares_IncludesDefaultTmp(t *testing.T) {
 	shareDir := t.TempDir()
 	defaultTmp := filepath.Join(t.TempDir(), "SharedTmp")
 
-	changed, out, _, err := normalizeShareConfig([]Share{{HostPath: shareDir}}, nil, defaultTmp)
+	changed, out, err := normalizeShares([]Share{{HostPath: shareDir}}, defaultTmp)
 	if err != nil {
-		t.Fatalf("normalizeShareConfig: %v", err)
+		t.Fatalf("normalizeShares: %v", err)
 	}
 	if !changed {
 		t.Fatalf("changed=false, want true")
@@ -112,9 +116,13 @@ func TestM1_ValidateAllowedPath_RejectsExcludedDir(t *testing.T) {
 	}
 
 	defaultTmp := filepath.Join(t.TempDir(), "SharedTmp")
-	_, shares, excludes, err := normalizeShareConfig([]Share{{HostPath: shareDir}}, []string{excludeDir}, defaultTmp)
+	_, shares, err := normalizeShares([]Share{{HostPath: shareDir}}, defaultTmp)
 	if err != nil {
-		t.Fatalf("normalizeShareConfig: %v", err)
+		t.Fatalf("normalizeShares: %v", err)
+	}
+	_, excludes, err := normalizeShareExcludes([]string{excludeDir}, shares, defaultTmp)
+	if err != nil {
+		t.Fatalf("normalizeShareExcludes: %v", err)
 	}
 
 	s := &Server{
@@ -136,5 +144,110 @@ func TestM1_ValidateAllowedPath_RejectsExcludedDir(t *testing.T) {
 	}
 	if _, _, ok := s.validateAllowedPath(okFile); !ok {
 		t.Fatalf("validateAllowedPath unexpectedly rejected allowed path %q", okFile)
+	}
+}
+
+func TestM6_ShareExcludes_BuiltinCannotBeRemoved(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	claudeDir := filepath.Join(home, ".claude")
+	codexDir := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(claudeDir, 0o700); err != nil {
+		t.Fatalf("mkdir ~/.claude: %v", err)
+	}
+	if err := os.MkdirAll(codexDir, 0o700); err != nil {
+		t.Fatalf("mkdir ~/.codex: %v", err)
+	}
+
+	defaultTmp := filepath.Join(t.TempDir(), "SharedTmp")
+	_, shares, err := normalizeShares([]Share{{HostPath: home}}, defaultTmp)
+	if err != nil {
+		t.Fatalf("normalizeShares: %v", err)
+	}
+
+	cfg := Config{Token: "tok"}
+	cfg.Paths.AppSupportDir = t.TempDir()
+	cfg.Paths.DefaultSharedTmpDir = defaultTmp
+
+	s := &Server{cfg: cfg, shares: shares, services: make(map[string]Service)}
+	h := s.Handler()
+
+	reqBody, _ := json.Marshal(map[string]any{"excludes": []string{}})
+	req := httptest.NewRequest(http.MethodPut, "/v1/shares/excludes", bytes.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer tok")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Excludes []string `json:"excludes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	want := map[string]bool{claudeDir: true, codexDir: true}
+	for _, p := range out.Excludes {
+		delete(want, p)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing builtin excludes: %#v (got=%#v)", want, out.Excludes)
+	}
+
+	// Builtins are forced; they should not be persisted in shares.json as user-configured excludes.
+	b, err := os.ReadFile(s.sharesPath())
+	if err != nil {
+		t.Fatalf("read shares.json: %v", err)
+	}
+	var sf sharesFile
+	if err := json.Unmarshal(b, &sf); err != nil {
+		t.Fatalf("parse shares.json: %v", err)
+	}
+	if len(sf.Excludes) != 0 {
+		t.Fatalf("unexpected persisted excludes: %#v", sf.Excludes)
+	}
+}
+
+func TestM6_SharesDelete_NotBlockedByBuiltinExcludes(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o700); err != nil {
+		t.Fatalf("mkdir ~/.claude: %v", err)
+	}
+
+	defaultTmp := filepath.Join(t.TempDir(), "SharedTmp")
+	_, shares, err := normalizeShares([]Share{{HostPath: home}}, defaultTmp)
+	if err != nil {
+		t.Fatalf("normalizeShares: %v", err)
+	}
+
+	cfg := Config{Token: "tok"}
+	cfg.Paths.AppSupportDir = t.TempDir()
+	cfg.Paths.DefaultSharedTmpDir = defaultTmp
+
+	s := &Server{cfg: cfg, shares: shares, services: make(map[string]Service)}
+	builtin := builtinShareExcludes(shares, defaultTmp)
+	s.shareExcludes = builtin
+
+	homeShareID := ""
+	for _, e := range shares {
+		if filepath.Clean(e.HostPath) == filepath.Clean(home) {
+			homeShareID = e.ShareID
+			break
+		}
+	}
+	if homeShareID == "" {
+		t.Fatalf("home share not found in shares: %#v", shares)
+	}
+
+	h := s.Handler()
+	req := httptest.NewRequest(http.MethodDelete, "/v1/shares/"+homeShareID, nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
