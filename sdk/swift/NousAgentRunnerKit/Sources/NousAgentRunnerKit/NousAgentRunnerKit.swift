@@ -57,6 +57,9 @@ public final class NousAgentRunnerDaemon {
             let runnerURL = try locateBundledExecutable(named: "nous-agent-runnerd")
             let p = Process()
             p.executableURL = runnerURL
+            var env = ProcessInfo.processInfo.environment
+            env["NOUS_AGENT_RUNNER_INSTANCE_ID"] = instanceID
+            p.environment = env
 
             // Persist logs to App Support for debugging (Pipe is not read and may stall).
             let appSupportDir = try resolveAppSupportDir(instanceID: instanceID)
