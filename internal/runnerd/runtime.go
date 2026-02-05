@@ -17,7 +17,7 @@ type runtimeInfo struct {
 
 func writeRuntimeFile(cfg Config) {
 	info := runtimeInfo{
-		Version:    "0.2.6",
+		Version:    "0.2.7",
 		InstanceID: cfg.InstanceID,
 		Pid:        os.Getpid(),
 		ListenAddr: cfg.ListenAddr,

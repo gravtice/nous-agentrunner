@@ -1,6 +1,6 @@
 {
   "name": "nous-agent-runner-sdk",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Nous Agent Runner TypeScript SDK (Node/Electron)",
   "license": "Apache-2.0",
   "repository": {
