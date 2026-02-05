@@ -2,6 +2,8 @@ package guestrunnerd
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -49,6 +51,34 @@ func (s *Server) handleImageImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true, "output": string(out)})
+}
+
+type pruneReq struct {
+	All *bool `json:"all,omitempty"`
+}
+
+func (s *Server) handleImagePrune(w http.ResponseWriter, r *http.Request) {
+	var req pruneReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, 400, "BAD_REQUEST", "invalid json", nil)
+		return
+	}
+
+	all := true
+	if req.All != nil {
+		all = *req.All
+	}
+
+	args := []string{"image", "prune", "-f"}
+	if all {
+		args = []string{"image", "prune", "-a", "-f"}
+	}
+	out, err := runNerdctl(r.Context(), args...)
+	if err != nil {
+		writeError(w, 500, "NERDCTL_ERROR", err.Error(), nil)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "all": all, "output": string(out)})
 }
 
 func (s *Server) handleImagesList(w http.ResponseWriter, r *http.Request) {

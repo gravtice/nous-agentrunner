@@ -2,6 +2,8 @@ package runnerd
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -67,6 +69,35 @@ func (s *Server) handleImagesImport(w http.ResponseWriter, r *http.Request) {
 
 	var out any
 	if err := gc.postJSON(r.Context(), "/internal/images/import", req, &out); err != nil {
+		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
+		return
+	}
+	writeJSON(w, 200, out)
+}
+
+type imagesPruneRequest struct {
+	All *bool `json:"all,omitempty"`
+}
+
+func (s *Server) handleImagesPrune(w http.ResponseWriter, r *http.Request) {
+	var req imagesPruneRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid json", nil)
+		return
+	}
+	all := true
+	if req.All != nil {
+		all = *req.All
+	}
+
+	gc, err := s.ensureGuestReady(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GUEST_UNAVAILABLE", err.Error(), nil)
+		return
+	}
+
+	var out any
+	if err := gc.postJSON(r.Context(), "/internal/images/prune", map[string]any{"all": all}, &out); err != nil {
 		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
 		return
 	}

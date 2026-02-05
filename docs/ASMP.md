@@ -241,6 +241,35 @@ TypeScript 集成可参考：`sdk/typescript/nous-agent-runner-sdk/src/runtime.t
 {"ok": true, "output": "Loaded image: local/xxx:tag\n"}
 ```
 
+#### `POST /v1/images/prune`
+
+语义：
+
+- 在 VM 内执行 `nerdctl image prune`，清理未使用镜像以释放磁盘空间。
+
+请求（可选）：
+
+```json
+{"all": true}
+```
+
+参数：
+
+- `all`：
+  - `true`（默认）：等价 `nerdctl image prune -a -f`（删除所有未被容器引用的镜像）
+  - `false`：等价 `nerdctl image prune -f`（仅删除 dangling 镜像）
+
+返回（成功）：
+
+```json
+{"ok": true, "all": true, "output": "Total reclaimed space: ...\n"}
+```
+
+备注：
+
+- 不会删除正在运行容器所使用的镜像。
+- 被清理的官方/离线镜像会在后续创建 Service 时按需重新 `pull/import`。
+
 #### `GET /v1/images`
 
 返回：
