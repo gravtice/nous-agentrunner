@@ -34,7 +34,7 @@ console.log(status);
 
 ```ts
 const service = await client.createClaudeService({
-  imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.8",
+  imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.9",
   rwMounts: ["/Users/alice/Projects"],
   env: { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "" },
   serviceConfig: { system_prompt: "You are a helpful assistant" },

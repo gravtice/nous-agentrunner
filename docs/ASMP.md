@@ -93,7 +93,7 @@ TypeScript 集成可参考：`sdk/typescript/nous-agent-runner-sdk/src/runtime.t
 
 返回（基线字段）：
 
-- `version`：Runner 版本（例如 `"0.2.8"`）
+- `version`：Runner 版本（例如 `"0.2.9"`）
 - `vm.state`：`running/stopped/not_created/unknown`（或其它小写状态；来自 Lima `status`）
 - `vm.restart_required`：Share 变更后会置 `true`
 - `services_running`：当前 Runner 记录的 `running` Service 数
@@ -102,7 +102,7 @@ TypeScript 集成可参考：`sdk/typescript/nous-agent-runner-sdk/src/runtime.t
 
 ```json
 {
-  "version": "0.2.8",
+  "version": "0.2.9",
   "vm": {
     "state": "running",
     "restart_required": false,
@@ -245,7 +245,7 @@ TypeScript 集成可参考：`sdk/typescript/nous-agent-runner-sdk/src/runtime.t
 请求：
 
 ```json
-{"ref":"docker.io/gravtice/nous-claude-agent-service:0.2.8"}
+{"ref":"docker.io/gravtice/nous-claude-agent-service:0.2.9"}
 ```
 
 约束：
@@ -311,7 +311,7 @@ TypeScript 集成可参考：`sdk/typescript/nous-agent-runner-sdk/src/runtime.t
 返回：
 
 ```json
-{"images":["docker.io/gravtice/nous-claude-agent-service:0.2.8","local/xxx:tag"]}
+{"images":["docker.io/gravtice/nous-claude-agent-service:0.2.9","local/xxx:tag"]}
 ```
 
 ---
@@ -338,7 +338,7 @@ TypeScript 集成可参考：`sdk/typescript/nous-agent-runner-sdk/src/runtime.t
 ```json
 {
   "type": "claude",
-  "image_ref": "docker.io/gravtice/nous-claude-agent-service:0.2.8",
+  "image_ref": "docker.io/gravtice/nous-claude-agent-service:0.2.9",
   "resources": {"cpu_cores": 2, "memory_mb": 1024, "pids": 256},
   "rw_mounts": ["/Users/alice/Work/project/output"],
   "env": {"ANTHROPIC_AUTH_TOKEN": "..."},
@@ -355,7 +355,7 @@ TypeScript 集成可参考：`sdk/typescript/nous-agent-runner-sdk/src/runtime.t
 ```json
 {
   "type": "claude",
-  "image_ref": "docker.io/gravtice/nous-claude-agent-service:0.2.8",
+  "image_ref": "docker.io/gravtice/nous-claude-agent-service:0.2.9",
   "resources": {"cpu_cores": 2, "memory_mb": 1024, "pids": 256},
   "rw_mounts": ["/Users/alice/Work/project/output"],
   "env": {"ANTHROPIC_AUTH_TOKEN": "..."},
