@@ -15,18 +15,23 @@ type Server struct {
 	ctx context.Context
 	cfg Config
 
-	mu                 sync.Mutex
-	skillsMu           sync.Mutex
-	shares             []shareEntry
-	shareExcludes      []excludeEntry // effective (user + builtin)
-	shareUserExcludes  []excludeEntry // persisted in shares.json
-	services           map[string]Service
-	tunnels            map[string]*tunnelEntry
-	tunnelByHostPort   map[int]string
-	forwards           map[string]*forwardEntry
-	forwardByGuestPort map[int]string
-	vmRestartRequired  bool
-	activeServiceChats map[string]bool // service_id -> connected
+	mu                    sync.Mutex
+	guestRunnerSyncMu     sync.Mutex
+	guestRunnerSyncSum    string
+	guestRunnerStageSize  int64
+	guestRunnerStageMTime int64
+	guestRunnerStageSum   string
+	skillsMu              sync.Mutex
+	shares                []shareEntry
+	shareExcludes         []excludeEntry // effective (user + builtin)
+	shareUserExcludes     []excludeEntry // persisted in shares.json
+	services              map[string]Service
+	tunnels               map[string]*tunnelEntry
+	tunnelByHostPort      map[int]string
+	forwards              map[string]*forwardEntry
+	forwardByGuestPort    map[int]string
+	vmRestartRequired     bool
+	activeServiceChats    map[string]bool // service_id -> connected
 }
 
 func NewServer(ctx context.Context, cfg Config) (*Server, error) {
