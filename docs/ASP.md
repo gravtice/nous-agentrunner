@@ -24,7 +24,7 @@ ASP 是 Nous Agent Runner 的**数据面**协议：用于与某个 Agent Service
 连接建立后，Runner 会先发送 `session.started`：
 
 ```json
-{"type":"session.started","session_id":"sess_xxxxxxxxxxxx","service_id":"svc_xxxxxxxxxxxx"}
+{"type":"session.started","session_id":"550e8400-e29b-41d4-a716-446655440000","service_id":"svc_xxxxxxxxxxxx"}
 ```
 
 `session.started` 增量字段（v0.2.0+，可选）：
@@ -39,7 +39,7 @@ ASP 是 Nous Agent Runner 的**数据面**协议：用于与某个 Agent Service
 {
   "type":"session.started",
   "service_id":"svc_...",
-  "session_id":"sess_...",
+  "session_id":"550e8400-e29b-41d4-a716-446655440000",
   "asp_version":"0.2.0",
   "capabilities":{
     "single_ws_per_service":true,

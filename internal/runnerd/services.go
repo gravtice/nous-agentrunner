@@ -125,7 +125,7 @@ func (s *Server) handleServicesCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to allocate service_id", nil)
 		return
 	}
-	sessionID, err := newID("sess_", 12)
+	sessionID, err := newUUID()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to allocate session_id", nil)
 		return

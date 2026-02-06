@@ -61,8 +61,8 @@ func (s *Server) handleServiceChatWS(w http.ResponseWriter, r *http.Request) {
 	clientConn.SetReadLimit(s.maxClientASPMessageBytes())
 
 	sessionID := strings.TrimSpace(svc.SessionID)
-	if sessionID == "" {
-		sessionID, err = newID("sess_", 12)
+	if sessionID == "" || !isUUID(sessionID) {
+		sessionID, err = newUUID()
 		if err != nil {
 			_ = clientConn.WriteJSON(map[string]any{"type": "error", "code": "INTERNAL_ERROR", "message": "failed to allocate session", "fatal": true})
 			return
