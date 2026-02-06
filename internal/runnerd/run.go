@@ -15,14 +15,6 @@ func Run(ctx context.Context) error {
 
 	setupLogging(cfg)
 
-	s, err := NewServer(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	if err := s.startVsockTunnelServer(ctx); err != nil {
-		return err
-	}
-
 	ln, cfg, alreadyRunning, err := listenRunnerdHTTP(cfg)
 	if err != nil {
 		return err
@@ -33,7 +25,18 @@ func Run(ctx context.Context) error {
 	}
 	if tcp, ok := ln.Addr().(*net.TCPAddr); ok {
 		cfg.ListenPort = tcp.Port
-		s.cfg.ListenPort = tcp.Port
+	}
+
+	cleanupOrphanSSHTunnels(cfg)
+
+	s, err := NewServer(ctx, cfg)
+	if err != nil {
+		_ = ln.Close()
+		return err
+	}
+	if err := s.startVsockTunnelServer(ctx); err != nil {
+		_ = ln.Close()
+		return err
 	}
 
 	writeRuntimeFile(cfg)
