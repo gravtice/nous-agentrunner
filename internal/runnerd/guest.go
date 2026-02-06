@@ -30,6 +30,9 @@ func (s *Server) ensureGuestReady(ctx context.Context) (*guestClient, error) {
 	if err := step("vm.ensure_running", func() error { return s.ensureVMRunning(ctx) }); err != nil {
 		return nil, err
 	}
+	if err := step("guest.sync_runnerd", func() error { return s.syncGuestRunnerBinary(ctx) }); err != nil {
+		return nil, err
+	}
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", s.cfg.GuestForwardPort)
 	client := &guestClient{baseURL: baseURL, http: &http.Client{Timeout: 10 * time.Minute}}
