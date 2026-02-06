@@ -157,12 +157,16 @@ def main() -> None:
         die(f"agent-browser wrapper error: missing real binary at {real}", 127)
 
     argv = sys.argv[1:]
-    cmd = first_command(argv)
+    stripped = strip_opt(argv, "--cdp")
+    stripped = strip_opt(stripped, "--cdp-ws")
+    cmd = first_command(stripped)
     if cmd in {"install", "launch"}:
         die(f"agent-browser: '{cmd}' is disabled in CoWork (CDP attach only).")
 
-    stripped = strip_opt(argv, "--cdp")
-    stripped = strip_opt(stripped, "--cdp-ws")
+    if cmd == "close" and mcp_url:
+        session_id = mcp_initialize(mcp_url)
+        mcp_tools_call(mcp_url, session_id, "browser_close", {"reason": "agent-browser close"})
+        raise SystemExit(0)
 
     if mcp_url:
         session_id = mcp_initialize(mcp_url)
