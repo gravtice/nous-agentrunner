@@ -382,14 +382,22 @@ private func isSafeSkillDirName(_ s: String) -> Bool {
 }
 
 private func resolveAppSupportDir(instanceID: String) throws -> URL {
-    guard let home = FileManager.default.homeDirectoryForCurrentUser as URL? else {
-        throw NousAgentRunnerError.io("missing home directory")
-    }
+    let home = resolveHomeDirectory()
     return home
         .appendingPathComponent("Library")
         .appendingPathComponent("Application Support")
         .appendingPathComponent("NousAgentRunner")
         .appendingPathComponent(instanceID)
+}
+
+private func resolveHomeDirectory() -> URL {
+    if let raw = ProcessInfo.processInfo.environment["HOME"]?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+       !raw.isEmpty
+    {
+        return URL(fileURLWithPath: raw, isDirectory: true).standardizedFileURL
+    }
+    return FileManager.default.homeDirectoryForCurrentUser
 }
 
 private func loadPort(appSupportDir: URL) throws -> Int {
