@@ -12,7 +12,7 @@ DerivedData/
 .build/
 
 # Go (project outputs)
-/dist/
+dist
 *.test
 *.out
 
