@@ -66,14 +66,19 @@ PY
     ;;
   image)
     sub="${2:-}"
-    case "$sub" in
-      prune)
-        if [ -n "${NERDCTL_IMAGE_PRUNE_OUTPUT:-}" ]; then
-          printf "%b" "$NERDCTL_IMAGE_PRUNE_OUTPUT"
-        fi
-        ;;
-    esac
-    ;;
+	case "$sub" in
+	      prune)
+	        if [ -n "${NERDCTL_IMAGE_PRUNE_OUTPUT:-}" ]; then
+	          printf "%b" "$NERDCTL_IMAGE_PRUNE_OUTPUT"
+	        fi
+	        ;;
+	      rm)
+	        if [ -n "${NERDCTL_IMAGE_RM_OUTPUT:-}" ]; then
+	          printf "%b" "$NERDCTL_IMAGE_RM_OUTPUT"
+	        fi
+	        ;;
+	    esac
+	    ;;
   load)
     if [ -n "${NERDCTL_LOAD_OUTPUT:-}" ]; then
       printf "%b" "$NERDCTL_LOAD_OUTPUT"
@@ -206,6 +211,55 @@ func TestM2_HandleImagePrune_AllFalse(t *testing.T) {
 	}
 	if !strings.Contains(log, "image prune -f") {
 		t.Fatalf("expected prune -f in log, got:\n%s", log)
+	}
+}
+
+func TestM2_HandleImageDelete_CallsNerdctlImageRm(t *testing.T) {
+	binDir := t.TempDir()
+	_ = writeFakeNerdctl(t, binDir)
+
+	logPath := filepath.Join(t.TempDir(), "nerdctl.log")
+	t.Setenv("NERDCTL_LOG", logPath)
+	t.Setenv("NERDCTL_IMAGE_RM_OUTPUT", "Untagged: local/a:1\n")
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+
+	s, err := NewServer(Config{ListenAddr: "127.0.0.1", ListenPort: 0, StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(
+		ts.URL+"/internal/images/delete",
+		"application/json",
+		bytes.NewReader([]byte(`{"ref":"local/a:1"}`)),
+	)
+	if err != nil {
+		t.Fatalf("POST /internal/images/delete: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+
+	var out struct {
+		Deleted bool `json:"deleted"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !out.Deleted {
+		t.Fatalf("deleted=%v", out.Deleted)
+	}
+
+	logBytes, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read nerdctl log: %v", err)
+	}
+	log := string(logBytes)
+	if !strings.Contains(log, "image rm local/a:1") {
+		t.Fatalf("expected image rm in log, got:\n%s", log)
 	}
 }
 

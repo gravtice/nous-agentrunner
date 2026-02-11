@@ -22,6 +22,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/images/pull", s.withAuth(s.handleImagesPull))
 	mux.HandleFunc("POST /v1/images/import", s.withAuth(s.handleImagesImport))
 	mux.HandleFunc("POST /v1/images/prune", s.withAuth(s.handleImagesPrune))
+	mux.HandleFunc("POST /v1/images/delete", s.withAuth(s.handleImagesDelete))
 	mux.HandleFunc("GET /v1/images", s.withAuth(s.handleImagesList))
 
 	mux.HandleFunc("POST /v1/services", s.withAuth(s.handleServicesCreate))

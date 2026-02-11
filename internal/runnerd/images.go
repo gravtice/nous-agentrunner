@@ -104,6 +104,62 @@ func (s *Server) handleImagesPrune(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, out)
 }
 
+type imagesDeleteRequest struct {
+	Ref string `json:"ref"`
+}
+
+func (s *Server) isAgentServiceImageRef(ref string) bool {
+	return strings.HasPrefix(ref, s.cfg.RegistryBase) || strings.HasPrefix(ref, "local/")
+}
+
+func (s *Server) handleImagesDelete(w http.ResponseWriter, r *http.Request) {
+	var req imagesDeleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid json", nil)
+		return
+	}
+	req.Ref = normalizeImageRef(req.Ref)
+	if req.Ref == "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "ref is required", nil)
+		return
+	}
+	if !s.isAgentServiceImageRef(req.Ref) {
+		writeError(w, http.StatusBadRequest, "REGISTRY_NOT_ALLOWED", "ref must be official registry or local tag", map[string]any{"registry_base": s.cfg.RegistryBase})
+		return
+	}
+
+	associatedAgents := 0
+	s.mu.Lock()
+	for _, svc := range s.services {
+		if normalizeImageRef(svc.ImageRef) == req.Ref {
+			associatedAgents++
+		}
+	}
+	s.mu.Unlock()
+	if associatedAgents > 0 {
+		writeError(
+			w,
+			http.StatusConflict,
+			"IMAGE_IN_USE",
+			"image has associated agents",
+			map[string]any{"associated_agents": associatedAgents},
+		)
+		return
+	}
+
+	gc, err := s.ensureGuestReady(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GUEST_UNAVAILABLE", err.Error(), nil)
+		return
+	}
+	var out any
+	if err := gc.postJSON(r.Context(), "/internal/images/delete", map[string]any{"ref": req.Ref}, &out); err != nil {
+		writeError(w, http.StatusInternalServerError, "GUEST_ERROR", err.Error(), nil)
+		return
+	}
+	writeJSON(w, 200, out)
+}
+
 func (s *Server) handleImagesList(w http.ResponseWriter, r *http.Request) {
 	gc, err := s.ensureGuestReady(r.Context())
 	if err != nil {

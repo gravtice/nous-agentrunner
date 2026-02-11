@@ -113,3 +113,56 @@ func TestM5_ImagesImport_RejectsPathNotShared(t *testing.T) {
 		t.Fatalf("code=%q body=%s", out.Error.Code, rec.Body.String())
 	}
 }
+
+func TestM5_ImagesDelete_RejectsNonAllowedRef(t *testing.T) {
+	s := &Server{cfg: Config{Token: "tok", RegistryBase: "docker.io/gravtice/"}, services: make(map[string]Service)}
+	h := s.Handler()
+
+	reqBody := []byte(`{"ref":"docker.io/library/alpine:3.19"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/delete", bytes.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer tok")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != 400 {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var out apiErrorResp
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.Error.Code != "REGISTRY_NOT_ALLOWED" {
+		t.Fatalf("code=%q body=%s", out.Error.Code, rec.Body.String())
+	}
+}
+
+func TestM5_ImagesDelete_RejectsImageInUse(t *testing.T) {
+	s := &Server{
+		cfg: Config{
+			Token:        "tok",
+			RegistryBase: "docker.io/gravtice/",
+		},
+		services: map[string]Service{
+			"svc_x": {
+				ServiceID: "svc_x",
+				Type:      "claude",
+				ImageRef:  "docker.io/gravtice/nous-claude-agent-service:0.2.11",
+				State:     "running",
+			},
+		},
+	}
+	h := s.Handler()
+
+	reqBody := []byte(`{"ref":"docker.io/gravtice/nous-claude-agent-service:0.2.11"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/delete", bytes.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer tok")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != 409 {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var out apiErrorResp
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.Error.Code != "IMAGE_IN_USE" {
+		t.Fatalf("code=%q body=%s", out.Error.Code, rec.Body.String())
+	}
+}

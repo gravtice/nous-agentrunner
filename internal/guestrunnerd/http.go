@@ -15,6 +15,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /internal/images/pull", s.handleImagePull)
 	mux.HandleFunc("POST /internal/images/import", s.handleImageImport)
 	mux.HandleFunc("POST /internal/images/prune", s.handleImagePrune)
+	mux.HandleFunc("POST /internal/images/delete", s.handleImageDelete)
 	mux.HandleFunc("GET /internal/images", s.handleImagesList)
 
 	mux.HandleFunc("POST /internal/services", s.handleServiceCreate)

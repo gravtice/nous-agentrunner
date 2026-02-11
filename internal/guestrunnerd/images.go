@@ -81,6 +81,29 @@ func (s *Server) handleImagePrune(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true, "all": all, "output": string(out)})
 }
 
+type imageDeleteReq struct {
+	Ref string `json:"ref"`
+}
+
+func (s *Server) handleImageDelete(w http.ResponseWriter, r *http.Request) {
+	var req imageDeleteReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, 400, "BAD_REQUEST", "invalid json", nil)
+		return
+	}
+	req.Ref = strings.TrimSpace(req.Ref)
+	if req.Ref == "" {
+		writeError(w, 400, "BAD_REQUEST", "ref is required", nil)
+		return
+	}
+	out, err := runNerdctl(r.Context(), "image", "rm", req.Ref)
+	if err != nil {
+		writeError(w, 500, "NERDCTL_ERROR", err.Error(), nil)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"deleted": true, "output": string(out)})
+}
+
 func (s *Server) handleImagesList(w http.ResponseWriter, r *http.Request) {
 	// KISS: return a list of refs by parsing `nerdctl images --format`.
 	out, err := runNerdctl(r.Context(), "images", "--format", "{{.Repository}}:{{.Tag}}")
