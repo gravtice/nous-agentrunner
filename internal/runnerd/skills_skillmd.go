@@ -1,7 +1,6 @@
 package runnerd
 
 import (
-	"bufio"
 	"bytes"
 	"io"
 	"os"
@@ -42,19 +41,17 @@ func readSkillMDMeta(path string) skillMDMeta {
 }
 
 func parseYAMLFrontmatter(s string) (skillMDMeta, bool) {
-	sc := bufio.NewScanner(strings.NewReader(s))
-	sc.Buffer(make([]byte, 0, 1024), 512*1024)
-
-	if !sc.Scan() {
+	lines := strings.Split(s, "\n")
+	if len(lines) == 0 {
 		return skillMDMeta{}, false
 	}
-	if strings.TrimSpace(sc.Text()) != "---" {
+	if strings.TrimSpace(lines[0]) != "---" {
 		return skillMDMeta{}, false
 	}
 
 	var meta skillMDMeta
-	for sc.Scan() {
-		line := sc.Text()
+	for i := 1; i < len(lines); i++ {
+		line := lines[i]
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "---" {
 			break
@@ -71,15 +68,160 @@ func parseYAMLFrontmatter(s string) (skillMDMeta, bool) {
 		}
 		switch k {
 		case "name":
-			meta.Name = v
+			if block, ok := parseYAMLBlockScalarHeader(v); ok {
+				meta.Name, i = consumeYAMLBlockScalar(lines, i+1, block)
+				i--
+			} else {
+				meta.Name = v
+			}
 		case "description":
-			meta.Description = v
+			if block, ok := parseYAMLBlockScalarHeader(v); ok {
+				meta.Description, i = consumeYAMLBlockScalar(lines, i+1, block)
+				i--
+			} else {
+				meta.Description = v
+			}
 		}
 	}
 	if meta.Name == "" && meta.Description == "" {
 		return skillMDMeta{}, false
 	}
 	return meta, true
+}
+
+type yamlBlockScalarHeader struct {
+	style  byte // '>' folded, '|' literal
+	indent int
+}
+
+func parseYAMLBlockScalarHeader(v string) (yamlBlockScalarHeader, bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return yamlBlockScalarHeader{}, false
+	}
+	style := v[0]
+	if style != '>' && style != '|' {
+		return yamlBlockScalarHeader{}, false
+	}
+	rest := strings.TrimSpace(v[1:])
+	indent := 0
+	for i := 0; i < len(rest); i++ {
+		ch := rest[i]
+		switch {
+		case ch == '+' || ch == '-':
+			continue
+		case ch >= '0' && ch <= '9':
+			indent = indent*10 + int(ch-'0')
+		default:
+			return yamlBlockScalarHeader{}, false
+		}
+	}
+	return yamlBlockScalarHeader{style: style, indent: indent}, true
+}
+
+func consumeYAMLBlockScalar(lines []string, start int, header yamlBlockScalarHeader) (string, int) {
+	minIndent := header.indent
+	firstContentSeen := false
+	var blockLines []string
+	i := start
+	for ; i < len(lines); i++ {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "" {
+			// Keep blank lines inside the block scalar.
+			blockLines = append(blockLines, "")
+			continue
+		}
+
+		indent := leadingIndentWidth(line)
+		if indent == 0 {
+			// Dedented line means block scalar ended.
+			break
+		}
+		if !firstContentSeen {
+			firstContentSeen = true
+			if minIndent == 0 {
+				minIndent = indent
+			}
+		}
+		if indent < minIndent {
+			break
+		}
+
+		blockLines = append(blockLines, trimLeadingIndent(line, minIndent))
+	}
+
+	if len(blockLines) == 0 {
+		return "", i
+	}
+
+	switch header.style {
+	case '|':
+		return strings.Join(blockLines, "\n"), i
+	case '>':
+		return foldYAMLBlockLines(blockLines), i
+	default:
+		return strings.Join(blockLines, "\n"), i
+	}
+}
+
+func leadingIndentWidth(line string) int {
+	n := 0
+	for n < len(line) {
+		if line[n] != ' ' && line[n] != '\t' {
+			break
+		}
+		n++
+	}
+	return n
+}
+
+func trimLeadingIndent(line string, indent int) string {
+	if indent <= 0 {
+		return line
+	}
+	i := 0
+	for i < len(line) && i < indent {
+		if line[i] != ' ' && line[i] != '\t' {
+			break
+		}
+		i++
+	}
+	return line[i:]
+}
+
+func foldYAMLBlockLines(lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	paragraphs := make([][]string, 0, 4)
+	curr := make([]string, 0, 4)
+	for _, line := range lines {
+		if line == "" {
+			if len(curr) > 0 {
+				paragraphs = append(paragraphs, curr)
+				curr = make([]string, 0, 4)
+			}
+			paragraphs = append(paragraphs, nil)
+			continue
+		}
+		curr = append(curr, line)
+	}
+	if len(curr) > 0 {
+		paragraphs = append(paragraphs, curr)
+	}
+
+	var parts []string
+	for _, p := range paragraphs {
+		if p == nil {
+			parts = append(parts, "")
+			continue
+		}
+		parts = append(parts, strings.Join(p, " "))
+	}
+
+	return strings.Join(parts, "\n")
 }
 
 func parseMarkdownFallback(s string) skillMDMeta {
