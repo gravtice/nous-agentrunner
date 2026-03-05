@@ -80,7 +80,7 @@ final class NousAgentRunnerDemoUITests: XCTestCase {
 
         let imageRef = app.textFields["imageRefField"]
         XCTAssertTrue(imageRef.waitForExistence(timeout: 10), "missing image_ref field")
-        replaceText(imageRef, with: "docker.io/gravtice/nous-claude-agent-service:0.2.3")
+        replaceText(imageRef, with: "docker.io/gravtice/nous-claude-agent-service:0.2.10")
 
         let create = app.buttons["createServiceButton"]
         XCTAssertTrue(create.waitForExistence(timeout: 30), "missing Create Service button")
