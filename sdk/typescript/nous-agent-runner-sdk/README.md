@@ -5,7 +5,7 @@ TypeScript SDK for **Nous Agent Runner** (Node/Electron).
 ## Requirements
 
 - Node.js `>=18`
-- macOS 14+ (Runner runtime requirement)
+- macOS 14+ (Runner requirement)
 - Runs in **Node/Electron main process** (not in the browser)
 
 ## Install
@@ -23,9 +23,9 @@ import {
 } from "nous-agent-runner-sdk";
 
 const daemon = new NousAgentRunnerDaemon();
-const runtime = await daemon.ensureRunning();
+const runnerContext = await daemon.ensureRunning();
 
-const client = new NousAgentRunnerClient(runtime);
+const client = new NousAgentRunnerClient(runnerContext);
 const status = await client.getSystemStatus();
 console.log(status);
 ```
@@ -53,7 +53,7 @@ ws.on("open", () => {
 });
 ```
 
-## Runtime discovery (zero-parameter)
+## Runner Context Discovery (zero-parameter)
 
 The SDK discovers the running daemon via:
 

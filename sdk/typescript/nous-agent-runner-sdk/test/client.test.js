@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
 
-const { NousAgentRunnerClient, NousAgentRunnerError, NousAgentRunnerRuntime } =
+const { NousAgentRunnerClient, NousAgentRunnerError, NousAgentRunnerContext } =
   require("../dist");
 
 function listen(server) {
@@ -29,12 +29,12 @@ test("NousAgentRunnerClient injects Authorization header", async () => {
 
   const port = await listen(server);
   try {
-    const runtime = new NousAgentRunnerRuntime({
+    const runnerContext = new NousAgentRunnerContext({
       baseURL: new URL(`http://127.0.0.1:${port}`),
       token: "tok",
       instanceId: "x",
     });
-    const client = new NousAgentRunnerClient(runtime);
+    const client = new NousAgentRunnerClient(runnerContext);
     const out = await client.getSystemStatus();
     assert.equal(out.ok, true);
   } finally {
@@ -50,12 +50,12 @@ test("NousAgentRunnerClient surfaces non-200 as http error", async () => {
 
   const port = await listen(server);
   try {
-    const runtime = new NousAgentRunnerRuntime({
+    const runnerContext = new NousAgentRunnerContext({
       baseURL: new URL(`http://127.0.0.1:${port}`),
       token: "tok",
       instanceId: "x",
     });
-    const client = new NousAgentRunnerClient(runtime);
+    const client = new NousAgentRunnerClient(runnerContext);
 
     await assert.rejects(
       () => client.getSystemStatus(),
@@ -71,4 +71,3 @@ test("NousAgentRunnerClient surfaces non-200 as http error", async () => {
     await new Promise((r) => server.close(r));
   }
 });
-

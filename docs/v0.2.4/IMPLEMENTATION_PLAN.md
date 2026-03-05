@@ -7,7 +7,7 @@
 本计划关注：
 
 - SDK 的对外 API 形态与目录结构
-- 运行时发现（零参数风格）与鉴权接入
+- Runner Context 发现（零参数风格）与鉴权接入
 - ASMP（HTTP）与 ASP（WebSocket）最小可用封装
 - 测试与交付节奏（阶段化）
 
@@ -16,7 +16,7 @@
 ### 1.1 目标（必须实现）
 
 1. **与 Swift SDK 对齐的能力覆盖**：至少覆盖 Swift SDK 已实现的接口集合（System/Shares/Images/Services/Tunnels/Skills + Chat WS URL/连接）。
-2. **零参数风格运行时发现**：默认不依赖 CLI 参数；从 `runtime.json`/`.env.*`/`token` 文件发现端口与鉴权信息，优先级与现有约定一致：`.env.local > .env.production > .env.development > .env.test`。
+2. **零参数风格 Runner Context 发现**：默认不依赖 CLI 参数；从 `runtime.json`/`.env.*`/`token` 文件发现端口与鉴权信息，优先级与现有约定一致：`.env.local > .env.production > .env.development > .env.test`。
 3. **Node 18+ 可用**：使用 Node 内置 `fetch`（或可注入 fetch），不引入臃肿依赖。
 4. **错误可诊断**：HTTP 非 200 返回应包含 status 与响应体文本（便于定位）。
 5. **安全默认保守**：对 `instance_id`、`skill_name` 等路径相关输入做字符集校验，避免 path traversal。
@@ -25,7 +25,7 @@
 
 - 不做浏览器 SDK（浏览器无法设置 `Authorization` header，且无法读取本机 token 文件）。
 - 不做协议/类型自动生成（OpenAPI / codegen）。先保证正确性与可维护性。
-- 不做“自动下载/安装 runtime”能力（SDK 只负责连接与调用）。
+- 不做“自动下载/安装 runner”能力（SDK 只负责连接与调用）。
 - 不做过度抽象（Transport 插件体系、Rx/Observable、复杂中间件等）。
 
 ## 2. 范围与版本对齐
@@ -47,7 +47,7 @@ sdk/typescript/nous-agent-runner-sdk/
 ├── package.json
 ├── tsconfig.json
 ├── src/
-│   ├── runtime.ts          # runtime discovery
+│   ├── context.ts          # runner context discovery
 │   ├── client.ts           # ASMP client
 │   ├── daemon.ts           # (可选) runnerd 管理
 │   ├── ws.ts               # ASP websocket helper
@@ -60,17 +60,17 @@ sdk/typescript/nous-agent-runner-sdk/
 
 ### 3.2 核心类型与类（建议与 Swift 命名对齐）
 
-**NousAgentRunnerRuntime**
+**NousAgentRunnerContext**
 
 - 字段：`baseURL: URL`, `token: string`, `instanceId: string`
 - 静态方法：
-  - `discover(): Promise<NousAgentRunnerRuntime>`（默认按 App Bundle ID 派生 instance id；与 Swift/runnerd 一致）
+  - `discover(): Promise<NousAgentRunnerContext>`（默认按 App Bundle ID 派生 instance id；与 Swift/runnerd 一致）
   - `discover({ instanceId }: { instanceId: string }): Promise<...>`（可选逃生口；一般不建议上层乱用）
   - `deriveInstanceIdFromBundleId(bundleId: string): string`（与 Swift 一致：sha256 + 前 12 位 hex）
 
 **NousAgentRunnerClient**
 
-- `constructor(runtime: NousAgentRunnerRuntime, opts?: { fetch?: typeof fetch })`
+- `constructor(runnerContext: NousAgentRunnerContext, opts?: { fetch?: typeof fetch })`
 - 统一内部：`requestJSON(method, path, body, timeoutMs)`
 - 方法集合（按 Swift SDK 覆盖）：
   - System：
@@ -118,7 +118,7 @@ sdk/typescript/nous-agent-runner-sdk/
 - 第二阶段（可选）：为常用对象补充最小接口（例如 `Service`/`Tunnel`/`SystemStatus`），并允许额外字段：`type X = { ... } & Record<string, unknown>`。
 - 不引入 `zod/io-ts` 之类的运行时校验库。
 
-## 4. 运行时发现（Runtime Discovery）
+## 4. Runner Context 发现（Runtime/Context Discovery）
 
 ### 4.0 `instance_id` 发现（与 Swift/runnerd 对齐）
 
@@ -169,7 +169,7 @@ sdk/typescript/nous-agent-runner-sdk/
 ### 6.1 单元测试
 
 - `parseEnv()`：引号/空行/# 注释处理与 Swift 行为一致。
-- runtime discovery：
+- runner context discovery：
   - runtime.json 优先级
   - `.env.*` 优先级
   - token 缺失报错
@@ -190,10 +190,10 @@ sdk/typescript/nous-agent-runner-sdk/
 
 > 原则：每个阶段都可独立验收；每个阶段都能产出“可用的增量”，不要搞大爆炸。
 
-### Stage 1：基础 SDK（ASMP + runtime discovery）
+### Stage 1：基础 SDK（ASMP + runner context discovery）
 
 - 交付：
-  - `NousAgentRunnerRuntime.discover()`
+  - `NousAgentRunnerContext.discover()`
   - `NousAgentRunnerClient` 覆盖除 WS 之外的 Swift SDK 方法
   - 最小单元测试与 mock HTTP 测试
 - 验收：

@@ -1,38 +1,65 @@
 # Nous Agent Runner
 
-**Embed AI Agents in Your macOS App — Securely**
+**Embed AI Agents in Your macOS App with HTTP + WebSocket APIs — Securely**
 
-Nous Agent Runner is a lightweight runtime that lets you integrate AI agents (Claude, etc.) into your macOS applications with complete isolation. No complex infrastructure. No security headaches. Just a few API calls.
+Nous Agent Runner is a lightweight local runner platform that lets you integrate AI agents (Claude, etc.) into your macOS applications with complete isolation. The developer-facing API is split into HTTP/JSON control-plane endpoints (ASMP) and a WebSocket streaming data plane (ASP).
 
 ```swift
 // Create an AI agent and start chatting
 let service = try await client.createClaudeService(
     imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.10",
     rwMounts: ["/Users/alice/Projects"],
+    env: ["ANTHROPIC_API_KEY": ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] ?? ""],
     serviceConfig: ["system_prompt": "You are a helpful coding assistant"]
 )
 
-let ws = WebSocket(url: service.aspURL)
-ws.send(["type": "input", "contents": [["kind": "text", "text": "Refactor this code..."]]])
-// Stream responses in real-time
+guard let serviceID = service["service_id"] as? String else {
+    throw NousAgentRunnerError.invalidConfig("missing service_id")
+}
+
+let ws = try client.openChatWebSocket(serviceID: serviceID)
+ws.resume()
+try await ws.send(.string(#"{"type":"input","contents":[{"kind":"text","text":"Refactor this code..."}]}"#))
 ```
+
+## API Model
+
+- **ASMP (HTTP/JSON)** — manage VM, services, images, and shares.
+- **ASP (WebSocket)** — stream chat input/output, tool events, and ask/answer interactions.
+
+## Terminology
+
+- **Nous Agent Runner** — product bundle you ship with your app.
+- **Runner Daemon (`nous-agent-runnerd`)** — host-side local daemon that exposes ASMP and ASP gateway.
+- **Agent Service** — per-agent container running inside the isolated Linux VM.
+- **Runner Context (`NousAgentRunnerContext`)** — SDK-discovered connection metadata (`baseURL`, `token`, `instance_id`) for the daemon.
+- **ASMP** — control plane API for lifecycle/infra operations.
+- **ASP** — WebSocket data plane for interactive agent sessions.
+
+## Typical Workflow
+
+1. Build and bundle `nous-agent-runnerd` with your macOS app.
+2. Start the daemon from your app (`ensureRunning`).
+3. Create an agent service from a container image with explicit mounts.
+4. Stream conversation over WebSocket (`response.delta` / `done`).
 
 ## Why Nous Agent Runner?
 
-| Challenge | Solution |
-|-----------|----------|
-| **AI agents need file access** | VirtioFS mounts with path whitelisting — agents see only what you allow |
-| **Security is critical** | Kernel-level isolation via Linux VM + containerization |
-| **Integration is complex** | Swift SDK with auto-discovery — 3 lines to get started |
-| **Distribution is painful** | Single DMG packaging — embed runtime alongside your app |
+| Developer Concern | Nous Agent Runner Approach |
+|-------------------|----------------------------|
+| **Can I integrate fast in an existing app?** | Swift/TypeScript SDKs + daemon endpoint/token auto-discovery keep integration to a few API calls |
+| **Can I stream responses in real time?** | ASP WebSocket channel provides low-latency `response.delta` event streaming |
+| **Is isolation strong enough for local agent execution?** | Linux VM boundary (Apple Virtualization Framework) plus per-service containers |
+| **Can I strictly control file access?** | VirtioFS mounts with canonical path validation and explicit share whitelisting |
+| **Can I ship this without ops complexity?** | Bundle runner binaries into your app and distribute as a single DMG |
 
 ## Features
 
-- **Zero-Config Integration** — Auto-discovers runtime, no CLI arguments needed
+- **WebSocket Streaming Data Plane** — Real-time text/events over ASP (`/v1/services/{id}/chat`)
+- **Zero-Config Integration** — Auto-discovers daemon endpoint and token, no CLI arguments needed
 - **Kernel-Level Isolation** — Linux VM via Apple Virtualization Framework
 - **Container Security** — Each agent runs in its own container with resource limits
 - **Path Whitelisting** — Explicit control over which directories agents can access
-- **Streaming Responses** — Real-time text output via WebSocket
 - **Multi-Modal Input** — Text, files, and images supported
 - **Session Continuity** — Multi-turn conversations with disconnect recovery
 - **Idle Auto-Stop** — Services automatically stop after inactivity
@@ -40,18 +67,32 @@ ws.send(["type": "input", "contents": [["kind": "text", "text": "Refactor this c
 
 ## Quick Start
 
-### 1. Download the Runtime
+### Prerequisites
+
+- macOS 14.0+ on Apple Silicon
+- Go 1.22+
+- Git submodules initialized (`references/lima` is required)
+- Node.js 18+ (only if you use the TypeScript SDK)
+
+### 1. Clone and Prepare Source
 
 ```bash
-# Clone the repository
 git clone https://github.com/gravtice/nous-agent-runner.git
 cd nous-agent-runner
+git submodule update --init --recursive
+```
 
-# Build binaries (requires Go 1.22+)
+### 2. Build Runner Binaries
+
+```bash
 ./scripts/macos/build_binaries.sh
 ```
 
-### 2. Add Swift SDK to Your App
+Build output goes to `dist/` (`nous-agent-runnerd`, `nous-guest-runnerd`, `limactl`, Lima guest assets).
+
+### 3. Add SDK to Your App
+
+Swift:
 
 ```swift
 // Package.swift
@@ -60,56 +101,83 @@ dependencies: [
 ]
 ```
 
-### 2b. Add TypeScript SDK to Your App (Node/Electron)
+TypeScript (Node/Electron main process):
 
 ```bash
 npm install nous-agent-runner-sdk
 ```
 
-### 3. Integrate in 3 Steps
+### 4. Integrate in 3 Steps (Swift)
 
 ```swift
+import Foundation
 import NousAgentRunnerKit
 
-// Step 1: Start the runtime
+// Step 1: Start daemon and discover Runner Context
 let daemon = try NousAgentRunnerDaemon()
-let runtime = try await daemon.ensureRunning()
+let runnerContext = try await daemon.ensureRunning()
 
 // Step 2: Create an agent service
-let client = NousAgentRunnerClient(runtime: runtime)
-let service = try await client.createService(
-    type: "claude",
+let client = NousAgentRunnerClient(context: runnerContext)
+let service = try await client.createClaudeService(
     imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.10",
-    config: ClaudeServiceConfig(
-        systemPrompt: "You are a helpful assistant",
-        allowedTools: ["Read", "Write", "Bash"]
-    )
+    rwMounts: ["/Users/alice/Projects"],
+    env: ["ANTHROPIC_API_KEY": ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] ?? ""],
+    serviceConfig: ["system_prompt": "You are a helpful assistant"]
 )
 
 // Step 3: Connect and chat
-let ws = try await client.connectToService(service.id)
-try await ws.send(input: "Hello, Claude!")
+guard let serviceID = service["service_id"] as? String else {
+    throw NousAgentRunnerError.invalidConfig("missing service_id")
+}
 
-for try await message in ws.messages {
-    switch message.type {
-    case .responseDelta(let text):
-        print(text, terminator: "")
-    case .done:
+let ws = try client.openChatWebSocket(serviceID: serviceID)
+ws.resume()
+
+try await ws.send(.string(#"{"type":"input","contents":[{"kind":"text","text":"Hello, Claude!"}]}"#))
+
+while true {
+    let frame = try await ws.receive()
+    switch frame {
+    case .string(let text):
+        print(text)
+    case .data(let data):
+        print(String(decoding: data, as: UTF8.self))
+    @unknown default:
         break
     }
 }
 ```
 
-Node/Electron usage (main process):
+### 5. Integrate (Node/Electron main process)
 
 ```ts
 import { NousAgentRunnerDaemon, NousAgentRunnerClient } from "nous-agent-runner-sdk";
 
 const daemon = new NousAgentRunnerDaemon();
-const runtime = await daemon.ensureRunning();
-const client = new NousAgentRunnerClient(runtime);
+const runnerContext = await daemon.ensureRunning();
+const client = new NousAgentRunnerClient(runnerContext);
 
-console.log(await client.getSystemStatus());
+const service = await client.createClaudeService({
+  imageRef: "docker.io/gravtice/nous-claude-agent-service:0.2.10",
+  rwMounts: ["/Users/alice/Projects"],
+  env: { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "" },
+  serviceConfig: { system_prompt: "You are a helpful assistant" },
+});
+
+const serviceId = String(service.service_id ?? "");
+const ws = client.openChatWebSocket(serviceId);
+
+ws.on("open", () => {
+  ws.send(JSON.stringify({
+    type: "input",
+    contents: [{ kind: "text", text: "Hello, Claude!" }],
+  }));
+});
+
+ws.on("message", (data) => {
+  console.log(String(data));
+});
 ```
 
 ## Architecture
@@ -147,11 +215,11 @@ console.log(await client.getSystemStatus());
 
 ### Control Plane (ASMP)
 
-HTTP/JSON API for managing the runtime:
+HTTP/JSON API for managing the runner and service lifecycle:
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /v1/system/status` | Runtime status and capabilities |
+| `GET /v1/system/status` | Runner status and capabilities |
 | `POST /v1/shares` | Add directory to whitelist |
 | `POST /v1/images/pull` | Pull agent service image |
 | `POST /v1/services` | Create and start a service |
@@ -169,11 +237,13 @@ WebSocket protocol for agent interaction:
 | `agent.ask` | Agent → Client | Agent needs user input |
 | `done` | Agent → Client | Request complete |
 
+Note: one `service_id` allows only one active WebSocket connection; concurrent connections are rejected with `409 SERVICE_BUSY`.
+
 Full protocol documentation: [`docs/ASMP.md`](docs/ASMP.md) | [`docs/ASP.md`](docs/ASP.md)
 
 ## Distribution
 
-Package your app with the runtime embedded:
+Package your app with the runner embedded:
 
 ```bash
 # Build everything
@@ -182,7 +252,7 @@ Package your app with the runtime embedded:
 # Package your app into a DMG
 ./scripts/macos/package_dmg.sh /path/to/YourApp.app
 
-# Output: dist/YourApp.dmg (runtime included)
+# Output: dist/YourApp.dmg (runner included)
 ```
 
 The packaged DMG contains everything needed — users don't need to install anything separately.
@@ -190,6 +260,16 @@ The packaged DMG contains everything needed — users don't need to install anyt
 Note: macOS “Files and Folders” / “Full Disk Access” grants are tied to the app's code signature.
 If you repackage with ad-hoc signing, the system may prompt again. To keep grants stable across updates,
 sign with a real identity (set `NOUS_CODESIGN_IDENTITY` when running `./scripts/macos/package_dmg.sh`).
+
+## Available Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `./scripts/macos/build_binaries.sh` | Build host/guest daemons, `limactl`, and Lima templates into `dist/` |
+| `./scripts/macos/package_dmg.sh <app_path>` | Inject runner binaries into your `.app` and produce `dist/<AppName>.dmg` |
+| `./scripts/macos/fetch_offline_assets.sh` | Pre-download and pre-bake VM/containerd assets for offline/slow-network installs |
+| `./scripts/macos/demo_xcuitest.sh` | Run Demo UI automation (real model call path) |
+| `./scripts/macos/make_dmg.sh` | Create DMG from `dist/NousAgentRunnerDemo.app` (demo helper) |
 
 ## Configuration
 
@@ -200,18 +280,18 @@ Configuration is file-based (zero CLI parameters):
 ~/Library/Application Support/NousAgentRunner/<instance_id>/.env.local
 ```
 
-Runtime paths are per-instance (based on `<instance_id>`):
+Runner paths are per-instance (based on `<instance_id>`):
 
 - Config + state (macOS): `~/Library/Application Support/NousAgentRunner/<instance_id>/`
   - Config: `.env.local`, `.env.production`, `.env.development`, `.env.test`
   - Auth token: `token` (0600)
-  - Runtime discovery: `runtime.json` (listen addr/port, pid, started_at)
+  - Runner Context discovery: `runtime.json` (listen addr/port, pid, started_at)
 - Logs (macOS): `~/Library/Logs/NousAgentRunner/<instance_id>/runnerd.log`
 - Cache/temp (macOS): `~/Library/Caches/NousAgentRunner/`
   - Default temp dir (shared): `~/Library/Caches/NousAgentRunner/<instance_id>/SharedTmp/`
   - Lima home (shared across instances): `~/Library/Caches/NousAgentRunner/lima/`
 
-You can query the exact paths at runtime via `GET /v1/system/paths`.
+You can query the exact paths via `GET /v1/system/paths`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -219,6 +299,14 @@ You can query the exact paths at runtime via `GET /v1/system/paths`.
 | `NOUS_AGENT_RUNNER_VM_MEMORY_MB` | 4096 | VM memory allocation |
 | `NOUS_AGENT_RUNNER_VM_CPU_CORES` | 4 | VM CPU cores |
 | `NOUS_AGENT_RUNNER_REGISTRY_BASE` | `docker.io/gravtice/` | Approved image registry |
+
+## Troubleshooting
+
+- Build fails with missing `references/lima`: run `git submodule update --init --recursive`.
+- First VM/service startup is slow: initial boot downloads VM/containerd assets. For deterministic installs, run `./scripts/macos/fetch_offline_assets.sh` before packaging.
+- Repeated macOS file permission prompts after app updates: avoid ad-hoc signing for release builds; set `NOUS_CODESIGN_IDENTITY` when running `./scripts/macos/package_dmg.sh`.
+- Need diagnostics/logs: check `~/Library/Logs/NousAgentRunner/<instance_id>/runnerd.log` and query `GET /v1/system/paths`.
+- TypeScript SDK must run in Node/Electron main process, not browser renderer context.
 
 ## Security Model
 
@@ -251,7 +339,8 @@ You can query the exact paths at runtime via `GET /v1/system/paths`.
 
 ## Documentation
 
-- [Implementation Plan](docs/v0.1.0/IMPLEMENTATION_PLAN.md) — Architecture design and rationale
+- [Implementation Plan (v0.2.4)](docs/v0.2.4/IMPLEMENTATION_PLAN.md) — Current staged development plan
+- [Implementation Plan (v0.1.0/MVP)](docs/v0.1.0/IMPLEMENTATION_PLAN.md) — Initial architecture design
 - [ASMP Protocol](docs/ASMP.md) — Control plane API reference
 - [ASP Protocol](docs/ASP.md) — Data plane WebSocket reference
 - [Building Guide](docs/v0.1.0/BUILDING.md) — Build and packaging instructions

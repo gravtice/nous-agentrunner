@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const http = require("node:http");
 const { WebSocketServer } = require("ws");
 
-const { NousAgentRunnerClient, NousAgentRunnerRuntime } = require("../dist");
+const { NousAgentRunnerClient, NousAgentRunnerContext } = require("../dist");
 
 function listen(server) {
   return new Promise((resolve, reject) => {
@@ -43,12 +43,12 @@ test("openChatWebSocket sends Authorization header", async () => {
 
   const port = await listen(server);
   try {
-    const runtime = new NousAgentRunnerRuntime({
+    const runnerContext = new NousAgentRunnerContext({
       baseURL: new URL(`http://127.0.0.1:${port}`),
       token: "tok",
       instanceId: "x",
     });
-    const client = new NousAgentRunnerClient(runtime);
+    const client = new NousAgentRunnerClient(runnerContext);
     const ws = client.openChatWebSocket("svc_123");
 
     await withTimeout(seen, 2_000);

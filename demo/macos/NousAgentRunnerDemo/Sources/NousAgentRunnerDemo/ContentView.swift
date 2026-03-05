@@ -686,8 +686,8 @@ struct ContentView: View {
     }
 
     private func client() throws -> NousAgentRunnerClient {
-        let runtime = try NousAgentRunnerRuntime.discover()
-        return NousAgentRunnerClient(runtime: runtime)
+        let runnerContext = try NousAgentRunnerContext.discover()
+        return NousAgentRunnerClient(context: runnerContext)
     }
 
     private func openRunnerLogs() {

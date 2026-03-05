@@ -1,5 +1,5 @@
 import { NousAgentRunnerError } from "./errors";
-import { isSafeSkillDirName, NousAgentRunnerRuntime } from "./runtime";
+import { isSafeSkillDirName, NousAgentRunnerContext } from "./context";
 import { openChatWebSocket } from "./ws";
 
 export type FetchLike = (
@@ -8,14 +8,14 @@ export type FetchLike = (
 ) => Promise<Response>;
 
 export class NousAgentRunnerClient {
-  private readonly runtime: NousAgentRunnerRuntime;
+  private readonly runnerContext: NousAgentRunnerContext;
   private readonly fetchFn: FetchLike;
 
   constructor(
-    runtime: NousAgentRunnerRuntime,
+    runnerContext: NousAgentRunnerContext,
     opts: { fetch?: FetchLike } = {},
   ) {
-    this.runtime = runtime;
+    this.runnerContext = runnerContext;
     const f = opts.fetch ?? (globalThis.fetch as unknown as FetchLike | undefined);
     if (!f) {
       throw new NousAgentRunnerError("invalidConfig", "fetch is not available");
@@ -211,7 +211,7 @@ export class NousAgentRunnerClient {
   }
 
   openChatWebSocket(serviceId: string) {
-    return openChatWebSocket(this.runtime, serviceId);
+    return openChatWebSocket(this.runnerContext, serviceId);
   }
 
   private async requestJSON(
@@ -220,13 +220,13 @@ export class NousAgentRunnerClient {
     body: unknown,
     timeoutMs: number,
   ): Promise<Record<string, unknown>> {
-    const url = new URL(path, this.runtime.baseURL);
+    const url = new URL(path, this.runnerContext.baseURL);
 
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const headers: Record<string, string> = {
-        Authorization: `Bearer ${this.runtime.token}`,
+        Authorization: `Bearer ${this.runnerContext.token}`,
       };
 
       let reqBody: string | undefined;

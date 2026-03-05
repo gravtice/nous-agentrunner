@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { NousAgentRunnerClient } from "./client";
 import { NousAgentRunnerError } from "./errors";
-import { NousAgentRunnerRuntime, discoverInstanceId } from "./runtime";
+import { NousAgentRunnerContext, discoverInstanceId } from "./context";
 
 export class NousAgentRunnerDaemon {
   private instanceId?: string;
@@ -42,8 +42,8 @@ export class NousAgentRunnerDaemon {
         );
       }
 
-      const runtime = await this.tryProbe();
-      if (runtime) return runtime;
+      const runnerContext = await this.tryProbe();
+      if (runnerContext) return runnerContext;
       await sleep(200);
     }
 
@@ -56,14 +56,14 @@ export class NousAgentRunnerDaemon {
     this.process = undefined;
   }
 
-  private async tryProbe(): Promise<NousAgentRunnerRuntime | null> {
+  private async tryProbe(): Promise<NousAgentRunnerContext | null> {
     try {
-      const runtime = await NousAgentRunnerRuntime.discover({
+      const runnerContext = await NousAgentRunnerContext.discover({
         instanceId: await this.getInstanceId(),
       });
-      const client = new NousAgentRunnerClient(runtime);
+      const client = new NousAgentRunnerClient(runnerContext);
       await client.getSystemStatus();
-      return runtime;
+      return runnerContext;
     } catch {
       return null;
     }

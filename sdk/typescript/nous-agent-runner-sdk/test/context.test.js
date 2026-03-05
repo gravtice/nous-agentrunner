@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const {
-  NousAgentRunnerRuntime,
+  NousAgentRunnerContext,
   deriveInstanceIdFromBundleId,
   isSafeInstanceId,
   parseEnv,
@@ -47,7 +47,7 @@ test("resolveAppSupportDir uses HOME", () => {
   }
 });
 
-test("NousAgentRunnerRuntime.discover prefers runtime.json", async () => {
+test("NousAgentRunnerContext.discover prefers runtime.json", async () => {
   const tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "nous-ts-sdk-"));
   const prevHome = process.env.HOME;
   process.env.HOME = tmpHome;
@@ -66,7 +66,7 @@ test("NousAgentRunnerRuntime.discover prefers runtime.json", async () => {
     );
     await fs.writeFile(path.join(appSupportDir, "token"), "tok\n", "utf8");
 
-    const rt = await NousAgentRunnerRuntime.discover({ instanceId: "testinstance" });
+    const rt = await NousAgentRunnerContext.discover({ instanceId: "testinstance" });
     assert.equal(rt.baseURL.toString(), "http://127.0.0.1:1234/");
     assert.equal(rt.token, "tok");
     assert.equal(rt.instanceId, "testinstance");
@@ -76,7 +76,7 @@ test("NousAgentRunnerRuntime.discover prefers runtime.json", async () => {
   }
 });
 
-test("NousAgentRunnerRuntime.discover uses .env.local over .env.production", async () => {
+test("NousAgentRunnerContext.discover uses .env.local over .env.production", async () => {
   const tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "nous-ts-sdk-"));
   const prevHome = process.env.HOME;
   process.env.HOME = tmpHome;
@@ -95,7 +95,7 @@ test("NousAgentRunnerRuntime.discover uses .env.local over .env.production", asy
     );
     await fs.writeFile(path.join(appSupportDir, "token"), "tok\n", "utf8");
 
-    const rt = await NousAgentRunnerRuntime.discover({ instanceId: "testinstance" });
+    const rt = await NousAgentRunnerContext.discover({ instanceId: "testinstance" });
     assert.equal(rt.baseURL.toString(), "http://127.0.0.1:2222/");
   } finally {
     process.env.HOME = prevHome;
@@ -103,7 +103,7 @@ test("NousAgentRunnerRuntime.discover uses .env.local over .env.production", asy
   }
 });
 
-test("NousAgentRunnerRuntime.discover errors when token missing", async () => {
+test("NousAgentRunnerContext.discover errors when token missing", async () => {
   const tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "nous-ts-sdk-"));
   const prevHome = process.env.HOME;
   process.env.HOME = tmpHome;
@@ -117,7 +117,7 @@ test("NousAgentRunnerRuntime.discover errors when token missing", async () => {
     );
 
     await assert.rejects(
-      () => NousAgentRunnerRuntime.discover({ instanceId: "testinstance" }),
+      () => NousAgentRunnerContext.discover({ instanceId: "testinstance" }),
       (err) => {
         assert.equal(err?.code, "missingConfig");
         return true;
@@ -128,4 +128,3 @@ test("NousAgentRunnerRuntime.discover errors when token missing", async () => {
     await fs.rm(tmpHome, { recursive: true, force: true });
   }
 });
-

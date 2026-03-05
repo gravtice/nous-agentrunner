@@ -1,7 +1,7 @@
 import WebSocket from "ws";
 
 import { NousAgentRunnerError } from "./errors";
-import { NousAgentRunnerRuntime } from "./runtime";
+import { NousAgentRunnerContext } from "./context";
 
 export function buildChatWebSocketURL(
   baseURL: URL,
@@ -19,11 +19,11 @@ export function buildChatWebSocketURL(
 }
 
 export function openChatWebSocket(
-  runtime: NousAgentRunnerRuntime,
+  runnerContext: NousAgentRunnerContext,
   serviceId: string,
 ): WebSocket {
-  const url = buildChatWebSocketURL(runtime.baseURL, serviceId);
+  const url = buildChatWebSocketURL(runnerContext.baseURL, serviceId);
   return new WebSocket(url.toString(), {
-    headers: { Authorization: `Bearer ${runtime.token}` },
+    headers: { Authorization: `Bearer ${runnerContext.token}` },
   });
 }

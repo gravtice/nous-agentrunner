@@ -9,18 +9,18 @@ import { NousAgentRunnerError } from "./errors";
 
 const execFileAsync = promisify(execFile);
 
-export type NousAgentRunnerRuntimeParams = {
+export type NousAgentRunnerContextParams = {
   baseURL: URL;
   token: string;
   instanceId: string;
 };
 
-export class NousAgentRunnerRuntime {
+export class NousAgentRunnerContext {
   readonly baseURL: URL;
   readonly token: string;
   readonly instanceId: string;
 
-  constructor(params: NousAgentRunnerRuntimeParams) {
+  constructor(params: NousAgentRunnerContextParams) {
     this.baseURL = params.baseURL;
     this.token = params.token;
     this.instanceId = params.instanceId;
@@ -36,7 +36,7 @@ export class NousAgentRunnerRuntime {
     const port = await loadPort(appSupportDir);
     const token = await loadToken(appSupportDir);
     const baseURL = new URL(`http://127.0.0.1:${port}`);
-    return new NousAgentRunnerRuntime({ baseURL, token, instanceId });
+    return new NousAgentRunnerContext({ baseURL, token, instanceId });
   }
 }
 

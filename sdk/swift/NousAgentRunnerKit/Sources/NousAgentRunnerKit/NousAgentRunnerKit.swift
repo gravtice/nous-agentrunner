@@ -9,7 +9,7 @@ public enum NousAgentRunnerError: Error {
     case timeout(String)
 }
 
-public struct NousAgentRunnerRuntime: Sendable {
+public struct NousAgentRunnerContext: Sendable {
     public let baseURL: URL
     public let token: String
     public let instanceID: String
@@ -20,19 +20,19 @@ public struct NousAgentRunnerRuntime: Sendable {
         self.instanceID = instanceID
     }
 
-    public static func discover() throws -> NousAgentRunnerRuntime {
+    public static func discover() throws -> NousAgentRunnerContext {
         let instanceID = try loadInstanceIDFromBundle()
         return try discover(instanceID: instanceID)
     }
 
-    public static func discover(instanceID: String) throws -> NousAgentRunnerRuntime {
+    public static func discover(instanceID: String) throws -> NousAgentRunnerContext {
         let appSupportDir = try resolveAppSupportDir(instanceID: instanceID)
         let port = try loadPort(appSupportDir: appSupportDir)
         let token = try loadToken(appSupportDir: appSupportDir)
         guard let baseURL = URL(string: "http://127.0.0.1:\(port)") else {
             throw NousAgentRunnerError.invalidConfig("invalid base url")
         }
-        return NousAgentRunnerRuntime(baseURL: baseURL, token: token, instanceID: instanceID)
+        return NousAgentRunnerContext(baseURL: baseURL, token: token, instanceID: instanceID)
     }
 }
 
@@ -45,11 +45,11 @@ public final class NousAgentRunnerDaemon {
         self.instanceID = try instanceID ?? loadInstanceIDFromBundle()
     }
 
-    public func ensureRunning(timeoutSeconds: Double = 15) async throws -> NousAgentRunnerRuntime {
-        if let runtime = try? NousAgentRunnerRuntime.discover(instanceID: instanceID) {
-            let client = NousAgentRunnerClient(runtime: runtime)
+    public func ensureRunning(timeoutSeconds: Double = 15) async throws -> NousAgentRunnerContext {
+        if let runnerContext = try? NousAgentRunnerContext.discover(instanceID: instanceID) {
+            let client = NousAgentRunnerClient(context: runnerContext)
             if (try? await client.getSystemStatus()) != nil {
-                return runtime
+                return runnerContext
             }
         }
 
@@ -84,10 +84,10 @@ public final class NousAgentRunnerDaemon {
 
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         while Date() < deadline {
-            if let runtime = try? NousAgentRunnerRuntime.discover(instanceID: instanceID) {
-                let client = NousAgentRunnerClient(runtime: runtime)
+            if let runnerContext = try? NousAgentRunnerContext.discover(instanceID: instanceID) {
+                let client = NousAgentRunnerClient(context: runnerContext)
                 if (try? await client.getSystemStatus()) != nil {
-                    return runtime
+                    return runnerContext
                 }
             }
             try await Task.sleep(nanoseconds: 200_000_000)
@@ -105,11 +105,11 @@ public final class NousAgentRunnerDaemon {
 }
 
 public final class NousAgentRunnerClient {
-    private let runtime: NousAgentRunnerRuntime
+    private let runnerContext: NousAgentRunnerContext
     private let session: URLSession
 
-    public init(runtime: NousAgentRunnerRuntime, session: URLSession = .shared) {
-        self.runtime = runtime
+    public init(context: NousAgentRunnerContext, session: URLSession = .shared) {
+        self.runnerContext = context
         self.session = session
     }
 
@@ -276,7 +276,7 @@ public final class NousAgentRunnerClient {
     }
 
     public func openChatWebSocket(serviceID: String) throws -> URLSessionWebSocketTask {
-        guard var components = URLComponents(url: runtime.baseURL, resolvingAgainstBaseURL: false) else {
+        guard var components = URLComponents(url: runnerContext.baseURL, resolvingAgainstBaseURL: false) else {
             throw NousAgentRunnerError.invalidConfig("invalid base url")
         }
         components.scheme = "ws"
@@ -286,16 +286,16 @@ public final class NousAgentRunnerClient {
         }
 
         var req = URLRequest(url: url)
-        req.setValue("Bearer \(runtime.token)", forHTTPHeaderField: "Authorization")
+        req.setValue("Bearer \(runnerContext.token)", forHTTPHeaderField: "Authorization")
         return session.webSocketTask(with: req)
     }
 
     private func requestJSON(method: String, path: String, body: [String: Any]?, timeoutSeconds: TimeInterval) async throws -> [String: Any] {
-        let url = runtime.baseURL.appendingPathComponent(path)
+        let url = runnerContext.baseURL.appendingPathComponent(path)
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.timeoutInterval = timeoutSeconds
-        req.setValue("Bearer \(runtime.token)", forHTTPHeaderField: "Authorization")
+        req.setValue("Bearer \(runnerContext.token)", forHTTPHeaderField: "Authorization")
         if let body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
