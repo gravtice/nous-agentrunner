@@ -69,4 +69,4 @@ The SDK discovers the running daemon via:
 
 ## License
 
-Apache-2.0 (see `LICENSE`).
+MIT (see `LICENSE`).

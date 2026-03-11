@@ -356,7 +356,7 @@ You can query the exact paths via `GET /v1/system/paths`.
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[MIT License](LICENSE)
 
 ---
 
