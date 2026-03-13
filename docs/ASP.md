@@ -2,6 +2,8 @@
 
 ASP 是 Nous Agent Runner 的**数据面**协议：用于与某个 Agent Service 进行**流式会话**交互。
 
+对外 WebSocket 入口同样由 `nous-agent-runnerd` 暴露。它是 Runner 的 localhost gateway/server 组件，不是独立产品名。
+
 本文档以当前代码实现为准（`nous-agent-runnerd` 作为 WebSocket 网关，代理到 Guest/容器内的 `/v1/chat`）。
 
 ---

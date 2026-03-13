@@ -2,6 +2,8 @@
 
 ASMP 是 Nous Agent Runner 的**控制面**协议：用于管理 VM、共享目录（Share）、镜像（Image）、以及 Agent Service 生命周期。
 
+这里的对外 API 由 `nous-agent-runnerd` 提供。它是 Runner 内部的 **localhost control server**，不是产品层的新命名。
+
 本文档以当前代码实现为准（`nous-agent-runnerd`，API 前缀固定为 `/v1`）。
 
 ---

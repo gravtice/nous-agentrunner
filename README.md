@@ -1,8 +1,8 @@
 # Nous Agent Runner
 
-**Embed AI Agents in Your macOS App with HTTP + WebSocket APIs — Securely**
+**Embedded Local Agent Runner with HTTP + WebSocket Server APIs**
 
-Nous Agent Runner is a lightweight local runner platform that lets you integrate AI agents (Claude, etc.) into your macOS applications with complete isolation. The developer-facing API is split into HTTP/JSON control-plane endpoints (ASMP) and a WebSocket streaming data plane (ASP).
+Nous Agent Runner is a lightweight embedded local agent runner that lets you integrate AI agents (Claude, etc.) into your macOS applications with complete isolation. Its developer-facing surface is a localhost control server: HTTP/JSON control-plane endpoints (ASMP) plus a WebSocket streaming data plane (ASP).
 
 ```swift
 // Create an AI agent and start chatting
@@ -29,10 +29,11 @@ try await ws.send(.string(#"{"type":"input","contents":[{"kind":"text","text":"R
 
 ## Terminology
 
-- **Nous Agent Runner** — product bundle you ship with your app.
-- **Runner Daemon (`nous-agent-runnerd`)** — host-side local daemon that exposes ASMP and ASP gateway.
+- **Nous Agent Runner** — the embedded runner bundle you ship with your app.
+- **Runner Daemon (`nous-agent-runnerd`)** — the host-side local control server and ASP gateway inside that runner.
 - **Agent Service** — per-agent container running inside the isolated Linux VM.
-- **Runner Context (`NousAgentRunnerContext`)** — SDK-discovered connection metadata (`baseURL`, `token`, `instance_id`) for the daemon.
+- **Runner Context (`NousAgentRunnerContext`)** — SDK-discovered connection metadata (`baseURL`, `token`, `instance_id`) for the local control server.
+- **Local Agent Server** — shorthand for the daemon's localhost API surface; this is a component of the Runner, not the product name.
 - **ASMP** — control plane API for lifecycle/infra operations.
 - **ASP** — WebSocket data plane for interactive agent sessions.
 
@@ -191,8 +192,8 @@ ws.on("message", (data) => {
 └──┼────────────────────────────────────────────────────────────────┘
    │ localhost only
    ▼
-┌─────────────────────────── Agent Runner ─────────────────────────┐
-│  nous-agent-runnerd (Host Daemon)                                │
+┌────────────────────────── Agent Runner ──────────────────────────┐
+│  nous-agent-runnerd (Host Daemon / Local Control Server)         │
 │  ├─ ASMP API: VM, services, images, shares                       │
 │  ├─ ASP Gateway: WebSocket proxy to agents                       │
 │  └─ Lima + AVF: Linux VM management                              │
