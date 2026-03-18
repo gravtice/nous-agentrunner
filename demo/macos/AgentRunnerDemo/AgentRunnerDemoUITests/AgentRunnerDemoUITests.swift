@@ -6,10 +6,32 @@ import AppKit
 final class AgentRunnerDemoUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
+        addUIInterruptionMonitor(withDescription: "Dismiss system alerts") { alert in
+            let preferredDismissButtons = [
+                "不允许", "关闭", "取消", "以后", "稍后", "忽略",
+                "Don't Allow", "Close", "Cancel", "Later", "Not Now", "Ignore",
+            ]
+            for label in preferredDismissButtons {
+                let button = alert.buttons[label]
+                if button.exists {
+                    button.click()
+                    return true
+                }
+            }
+
+            for button in alert.buttons.allElementsBoundByIndex {
+                let label = button.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                if label.isEmpty || label == "帮助" || label == "Help" { continue }
+                button.click()
+                return true
+            }
+            return false
+        }
     }
 
     func testE2E_DemoCoreFlows() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
         addTeardownBlock {
             if app.state == .runningForeground {
                 let settingsClose = app.buttons["settingsCloseButton"]
@@ -30,7 +52,7 @@ final class AgentRunnerDemoUITests: XCTestCase {
         app.launch()
 
         let refreshStatus = app.buttons["refreshStatusButton"]
-        XCTAssertTrue(refreshStatus.waitForExistence(timeout: 30), "missing Refresh Status button")
+        XCTAssertTrue(waitForMainWindow(app, refreshStatusButton: refreshStatus, timeout: 30), "missing Refresh Status button")
         refreshStatus.click()
 
         let statusText = app.staticTexts["statusText"]
@@ -80,7 +102,7 @@ final class AgentRunnerDemoUITests: XCTestCase {
 
         let imageRef = app.textFields["imageRefField"]
         XCTAssertTrue(imageRef.waitForExistence(timeout: 10), "missing image_ref field")
-        replaceText(imageRef, with: "docker.io/gravtice/agent-runner-claude-agent-service:0.2.10")
+        replaceText(imageRef, with: "docker.io/gravtice/claude-agent-service:0.2.10")
 
         let create = app.buttons["createServiceButton"]
         XCTAssertTrue(create.waitForExistence(timeout: 30), "missing Create Service button")
@@ -207,10 +229,15 @@ final class AgentRunnerDemoUITests: XCTestCase {
         return false
     }
 
+    private func elementText(_ el: XCUIElement) -> String {
+        if let v = el.value as? String, !v.isEmpty { return v }
+        return el.label
+    }
+
     private func waitUntilStatusNotEqual(_ el: XCUIElement, forbidden: String, timeout: TimeInterval) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if el.label != forbidden { return }
+            if elementText(el) != forbidden { return }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
         XCTFail("status still equals \(forbidden)")
@@ -219,7 +246,7 @@ final class AgentRunnerDemoUITests: XCTestCase {
     private func waitUntilStatusNotPrefixed(_ el: XCUIElement, forbiddenPrefix: String, timeout: TimeInterval) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if !el.label.hasPrefix(forbiddenPrefix) { return }
+            if !elementText(el).hasPrefix(forbiddenPrefix) { return }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
         XCTFail("status still starts with \(forbiddenPrefix)")
@@ -230,14 +257,14 @@ final class AgentRunnerDemoUITests: XCTestCase {
         while Date() < deadline {
             if stopButton.exists { return }
 
-            let status = statusText.label
+            let status = elementText(statusText)
             if status.hasPrefix("Runner error:") || status.hasPrefix("Error:") {
                 XCTFail("create service failed: \(String(status.prefix(500)))")
                 return
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
-        XCTFail("timeout waiting for service creation (Stop button). last status: \(String(statusText.label.prefix(500)))")
+        XCTFail("timeout waiting for service creation (Stop button). last status: \(String(elementText(statusText).prefix(500)))")
     }
 
     private func replaceText(_ el: XCUIElement, with text: String) {
@@ -248,8 +275,28 @@ final class AgentRunnerDemoUITests: XCTestCase {
         pb.clearContents()
         pb.setString(text, forType: .string)
         el.typeKey("v", modifierFlags: [.command])
+        el.typeKey(XCUIKeyboardKey.tab.rawValue, modifierFlags: [])
 #else
         el.typeText(text)
 #endif
+    }
+
+    private func waitForMainWindow(_ app: XCUIApplication, refreshStatusButton: XCUIElement, timeout: TimeInterval) -> Bool {
+        if refreshStatusButton.waitForExistence(timeout: min(timeout, 5)) {
+            return true
+        }
+
+        // macOS can relaunch a SwiftUI app into a menu-only state with no restored window.
+        app.activate()
+        let fileMenu = app.menuBars.menuBarItems["File"]
+        if fileMenu.waitForExistence(timeout: 5) {
+            fileMenu.click()
+            let newWindow = app.menuItems["New Window"]
+            if newWindow.waitForExistence(timeout: 5) {
+                newWindow.click()
+            }
+        }
+
+        return refreshStatusButton.waitForExistence(timeout: max(1, timeout - 5))
     }
 }

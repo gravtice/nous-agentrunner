@@ -7,7 +7,7 @@ Agent Runner is a lightweight embedded local agent runner that lets you integrat
 ```swift
 // Create an AI agent and start chatting
 let service = try await client.createClaudeService(
-    imageRef: "docker.io/gravtice/agent-runner-claude-agent-service:0.2.10",
+    imageRef: "docker.io/gravtice/claude-agent-service:0.2.10",
     rwMounts: ["/Users/alice/Projects"],
     env: ["ANTHROPIC_API_KEY": ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] ?? ""],
     serviceConfig: ["system_prompt": "You are a helpful coding assistant"]
@@ -121,7 +121,7 @@ let runnerContext = try await daemon.ensureRunning()
 // Step 2: Create an agent service
 let client = AgentRunnerClient(context: runnerContext)
 let service = try await client.createClaudeService(
-    imageRef: "docker.io/gravtice/agent-runner-claude-agent-service:0.2.10",
+    imageRef: "docker.io/gravtice/claude-agent-service:0.2.10",
     rwMounts: ["/Users/alice/Projects"],
     env: ["ANTHROPIC_API_KEY": ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] ?? ""],
     serviceConfig: ["system_prompt": "You are a helpful assistant"]
@@ -160,7 +160,7 @@ const runnerContext = await daemon.ensureRunning();
 const client = new AgentRunnerClient(runnerContext);
 
 const service = await client.createClaudeService({
-  imageRef: "docker.io/gravtice/agent-runner-claude-agent-service:0.2.10",
+  imageRef: "docker.io/gravtice/claude-agent-service:0.2.10",
   rwMounts: ["/Users/alice/Projects"],
   env: { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "" },
   serviceConfig: { system_prompt: "You are a helpful assistant" },

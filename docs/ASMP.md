@@ -247,7 +247,7 @@ TypeScript 集成可参考：`sdk/typescript/agent-runner-sdk/src/context.ts`
 请求：
 
 ```json
-{"ref":"docker.io/gravtice/agent-runner-claude-agent-service:0.2.10"}
+{"ref":"docker.io/gravtice/claude-agent-service:0.2.10"}
 ```
 
 约束：
@@ -313,7 +313,7 @@ TypeScript 集成可参考：`sdk/typescript/agent-runner-sdk/src/context.ts`
 返回：
 
 ```json
-{"images":["docker.io/gravtice/agent-runner-claude-agent-service:0.2.10","local/xxx:tag"]}
+{"images":["docker.io/gravtice/claude-agent-service:0.2.10","local/xxx:tag"]}
 ```
 
 ---
@@ -340,7 +340,7 @@ TypeScript 集成可参考：`sdk/typescript/agent-runner-sdk/src/context.ts`
 ```json
 {
   "type": "claude",
-  "image_ref": "docker.io/gravtice/agent-runner-claude-agent-service:0.2.10",
+  "image_ref": "docker.io/gravtice/claude-agent-service:0.2.10",
   "resources": {"cpu_cores": 2, "memory_mb": 1024, "pids": 256},
   "rw_mounts": ["/Users/alice/Work/project/output"],
   "env": {"ANTHROPIC_AUTH_TOKEN": "..."},
@@ -357,7 +357,7 @@ TypeScript 集成可参考：`sdk/typescript/agent-runner-sdk/src/context.ts`
 ```json
 {
   "type": "claude",
-  "image_ref": "docker.io/gravtice/agent-runner-claude-agent-service:0.2.10",
+  "image_ref": "docker.io/gravtice/claude-agent-service:0.2.10",
   "resources": {"cpu_cores": 2, "memory_mb": 1024, "pids": 256},
   "rw_mounts": ["/Users/alice/Work/project/output"],
   "env": {"ANTHROPIC_AUTH_TOKEN": "..."},

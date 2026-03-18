@@ -31,7 +31,7 @@
 
 在仓库根目录执行：
 
-`docker build -f services/claude-agent-service/Dockerfile -t docker.io/gravtice/agent-runner-claude-agent-service:$(awk -F= '$1=="AGENT_RUNNER_VERSION"{print $2; exit}' VERSION) .`
+`docker build -f services/claude-agent-service/Dockerfile -t docker.io/gravtice/claude-agent-service:$(awk -F= '$1=="AGENT_RUNNER_VERSION"{print $2; exit}' VERSION) .`
 
 说明：
 

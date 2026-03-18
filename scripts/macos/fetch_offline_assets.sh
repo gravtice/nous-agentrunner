@@ -288,13 +288,13 @@ OFFLINE_IMAGE_REF=""
 OFFLINE_IMAGE_FILE=""
 if command -v docker >/dev/null 2>&1; then
   # KISS: bundle the default claude agent service image that matches the main version.
-  OFFLINE_IMAGE_REF="docker.io/gravtice/agent-runner-claude-agent-service:${AGENT_RUNNER_VERSION}"
+  OFFLINE_IMAGE_REF="docker.io/gravtice/claude-agent-service:${AGENT_RUNNER_VERSION}"
   src_ref=""
   for cand in \
     "${OFFLINE_IMAGE_REF}" \
-    "gravtice/agent-runner-claude-agent-service:${AGENT_RUNNER_VERSION}" \
-    "agent-runner-claude-agent-service:${AGENT_RUNNER_VERSION}" \
-    "local/agent-runner-claude-agent-service:${AGENT_RUNNER_VERSION}"
+    "gravtice/claude-agent-service:${AGENT_RUNNER_VERSION}" \
+    "claude-agent-service:${AGENT_RUNNER_VERSION}" \
+    "local/claude-agent-service:${AGENT_RUNNER_VERSION}"
   do
     if docker image inspect "${cand}" >/dev/null 2>&1; then
       src_ref="${cand}"
@@ -306,7 +306,7 @@ if command -v docker >/dev/null 2>&1; then
       docker tag "${src_ref}" "${OFFLINE_IMAGE_REF}"
     fi
     mkdir -p "${ASSETS_DIR}/images"
-    OFFLINE_IMAGE_FILE="images/agent-runner-claude-agent-service-${AGENT_RUNNER_VERSION}.tar"
+    OFFLINE_IMAGE_FILE="images/claude-agent-service-${AGENT_RUNNER_VERSION}.tar"
     echo "[image] export ${OFFLINE_IMAGE_REF} -> ${OFFLINE_IMAGE_FILE}"
     docker save -o "${ASSETS_DIR}/${OFFLINE_IMAGE_FILE}" "${OFFLINE_IMAGE_REF}"
   else

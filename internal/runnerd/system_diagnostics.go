@@ -24,14 +24,38 @@ func (s *Server) handleSystemDiagnosticsGuestToHostTunnel(w http.ResponseWriter,
 	resp := guestToHostTunnelDiagnosticsResponse{}
 	defer func() { writeJSON(w, http.StatusOK, resp) }()
 
+	gc, err := s.ensureGuestReady(r.Context())
+	if err != nil {
+		resp.OK = false
+		resp.Error = err.Error()
+		return
+	}
+
+	const maxAttempts = 3
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		attemptResp, err := s.runGuestToHostTunnelDiagnosticsAttempt(r, gc)
+		resp = attemptResp
+		if err == nil {
+			return
+		}
+		resp.OK = false
+		resp.Error = err.Error()
+		if attempt == maxAttempts {
+			return
+		}
+		time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+	}
+}
+
+func (s *Server) runGuestToHostTunnelDiagnosticsAttempt(r *http.Request, gc *guestClient) (guestToHostTunnelDiagnosticsResponse, error) {
+	resp := guestToHostTunnelDiagnosticsResponse{}
+
 	var ln net.Listener
 	var hostPort int
 	for range 16 {
 		l, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
-			resp.OK = false
-			resp.Error = err.Error()
-			return
+			return resp, err
 		}
 		p := 0
 		if tcp, ok := l.Addr().(*net.TCPAddr); ok {
@@ -50,9 +74,7 @@ func (s *Server) handleSystemDiagnosticsGuestToHostTunnel(w http.ResponseWriter,
 		_ = l.Close()
 	}
 	if ln == nil {
-		resp.OK = false
-		resp.Error = "failed to allocate a free host port for tunnel probe"
-		return
+		return resp, fmt.Errorf("failed to allocate a free host port for tunnel probe")
 	}
 	defer ln.Close()
 
@@ -60,9 +82,7 @@ func (s *Server) handleSystemDiagnosticsGuestToHostTunnel(w http.ResponseWriter,
 
 	nonce, err := newID("probe_", 12)
 	if err != nil {
-		resp.OK = false
-		resp.Error = "failed to allocate probe id"
-		return
+		return resp, fmt.Errorf("failed to allocate probe id")
 	}
 	ping := "ping:" + nonce + "\n"
 	pong := "pong:" + nonce + "\n"
@@ -98,34 +118,21 @@ func (s *Server) handleSystemDiagnosticsGuestToHostTunnel(w http.ResponseWriter,
 		serverDone <- nil
 	}()
 
-	gc, err := s.ensureGuestReady(r.Context())
-	if err != nil {
-		resp.OK = false
-		resp.Error = err.Error()
-		return
-	}
-
 	var portResp struct {
 		Port int `json:"port"`
 	}
 	if err := gc.getJSON(r.Context(), "/internal/ports/free", &portResp); err != nil {
-		resp.OK = false
-		resp.Error = err.Error()
-		return
+		return resp, err
 	}
 
 	guestPort := portResp.Port
 	if guestPort <= 0 || guestPort > 65535 {
-		resp.OK = false
-		resp.Error = "guest returned invalid free port"
-		return
+		return resp, fmt.Errorf("guest returned invalid free port")
 	}
 
 	cancel, _, err := s.startReverseSSHTunnel(r.Context(), hostPort, guestPort)
 	if err != nil {
-		resp.OK = false
-		resp.Error = err.Error()
-		return
+		return resp, err
 	}
 	defer cancel()
 
@@ -137,31 +144,24 @@ func (s *Server) handleSystemDiagnosticsGuestToHostTunnel(w http.ResponseWriter,
 		ElapsedMS int64  `json:"elapsed_ms"`
 	}
 	if err := gc.postJSON(r.Context(), "/internal/diagnostics/tcp_probe", map[string]any{"port": guestPort, "payload": ping}, &probeResp); err != nil {
-		resp.OK = false
-		resp.Error = err.Error()
-		return
+		return resp, err
 	}
 
 	resp.Reply = probeResp.Reply
 	resp.ElapsedMS = probeResp.ElapsedMS
 	if probeResp.Reply != pong {
-		resp.OK = false
-		resp.Error = "reply mismatch"
-		return
+		return resp, fmt.Errorf("reply mismatch")
 	}
 
 	select {
 	case err := <-serverDone:
 		if err != nil {
-			resp.OK = false
-			resp.Error = err.Error()
-			return
+			return resp, err
 		}
 	case <-time.After(2 * time.Second):
-		resp.OK = false
-		resp.Error = "timeout waiting for host probe server"
-		return
+		return resp, fmt.Errorf("timeout waiting for host probe server")
 	}
 
 	resp.OK = true
+	return resp, nil
 }

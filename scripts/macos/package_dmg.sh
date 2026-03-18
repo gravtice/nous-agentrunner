@@ -304,7 +304,7 @@ inject_runtime_into_app() {
 
   local runner_version
   runner_version="$(read_runner_version)"
-  local default_image="docker.io/gravtice/agent-runner-claude-agent-service:${runner_version}"
+  local default_image="docker.io/gravtice/claude-agent-service:${runner_version}"
 
   # Optional: bundle offline assets to avoid first-run downloads.
   # See: scripts/macos/fetch_offline_assets.sh

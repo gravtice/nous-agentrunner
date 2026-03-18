@@ -158,7 +158,7 @@ private struct AskSheetView: View {
 
 struct ContentView: View {
     @State private var statusText = "Not loaded"
-    @State private var imageRef = "docker.io/gravtice/agent-runner-claude-agent-service:0.2.10"
+    @State private var imageRef = "docker.io/gravtice/claude-agent-service:0.2.10"
 
     private enum SystemPromptMode: String, CaseIterable, Identifiable {
         case builtin
@@ -745,7 +745,20 @@ struct ContentView: View {
         do {
             let c = try client()
             let resp = try await c.listServices()
-            services = resp["services"] as? [[String: Any]] ?? []
+            let nextServices = resp["services"] as? [[String: Any]] ?? []
+            services = nextServices
+
+            let availableIDs = Set(nextServices.compactMap { svc in
+                let sid = (svc["service_id"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                return sid.isEmpty ? nil : sid
+            })
+
+            if let current = serviceID, !availableIDs.contains(current) {
+                serviceID = nil
+            }
+            if serviceID == nil, availableIDs.count == 1 {
+                serviceID = availableIDs.first
+            }
         } catch {
             statusText = "Error: \(error)"
         }

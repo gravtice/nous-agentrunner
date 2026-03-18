@@ -144,14 +144,14 @@ func TestM5_ImagesDelete_RejectsImageInUse(t *testing.T) {
 			"svc_x": {
 				ServiceID: "svc_x",
 				Type:      "claude",
-				ImageRef:  "docker.io/gravtice/agent-runner-claude-agent-service:0.2.11",
+				ImageRef:  "docker.io/gravtice/claude-agent-service:0.2.11",
 				State:     "running",
 			},
 		},
 	}
 	h := s.Handler()
 
-	reqBody := []byte(`{"ref":"docker.io/gravtice/agent-runner-claude-agent-service:0.2.11"}`)
+	reqBody := []byte(`{"ref":"docker.io/gravtice/claude-agent-service:0.2.11"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/delete", bytes.NewReader(reqBody))
 	req.Header.Set("Authorization", "Bearer tok")
 	rec := httptest.NewRecorder()

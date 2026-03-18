@@ -273,7 +273,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
-			shellScript = "set -euo pipefail\n\nROOT_DIR=\"${SRCROOT}/../../..\"\nDIST_DIR=\"${ROOT_DIR}/dist\"\n\nmkdir -p \"${DIST_DIR}\"\nif command -v go >/dev/null 2>&1; then\n  \"${ROOT_DIR}/scripts/macos/build_binaries.sh\"\nelse\n  for f in agent-runnerd guest-runnerd limactl lima-guestagent.Linux-aarch64; do\n    if [ ! -f \"${DIST_DIR}/${f}\" ]; then\n      echo \"error: go not found and missing: ${DIST_DIR}/${f}\" >&2\n      exit 1\n    fi\n  done\n  if [ ! -d \"${DIST_DIR}/lima-templates\" ]; then\n    echo \"error: go not found and missing directory: ${DIST_DIR}/lima-templates\" >&2\n    exit 1\n  fi\nfi\n\nRES_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nCONTENTS_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}\"\n\nmkdir -p \"${RES_DIR}\"\n\ninstall -m 0755 \"${DIST_DIR}/agent-runnerd\" \"${RES_DIR}/agent-runnerd\"\ninstall -m 0755 \"${DIST_DIR}/guest-runnerd\" \"${RES_DIR}/guest-runnerd\"\ninstall -m 0755 \"${DIST_DIR}/limactl\" \"${RES_DIR}/limactl\"\n\nmkdir -p \"${CONTENTS_DIR}/share/lima\"\ninstall -m 0755 \"${DIST_DIR}/lima-guestagent.Linux-aarch64\" \"${CONTENTS_DIR}/share/lima/lima-guestagent.Linux-aarch64\"\n\nrm -rf \"${RES_DIR}/lima-templates\"\nditto \"${DIST_DIR}/lima-templates\" \"${RES_DIR}/lima-templates\"\n\nif command -v codesign >/dev/null 2>&1; then\n  codesign --force --sign - --timestamp=none \"${RES_DIR}/agent-runnerd\" >/dev/null\n  codesign --force --sign - --timestamp=none \"${RES_DIR}/guest-runnerd\" >/dev/null\n\n  ENTITLEMENTS=\"${ROOT_DIR}/references/lima/vz.entitlements\"\n  if [ ! -f \"${ENTITLEMENTS}\" ]; then\n    echo \"error: missing entitlements file: ${ENTITLEMENTS}\" >&2\n    exit 1\n  fi\n  codesign --force --sign - --timestamp=none --entitlements \"${ENTITLEMENTS}\" \"${RES_DIR}/limactl\" >/dev/null\nfi\n";
+			shellScript = "\"${SRCROOT}/../../../scripts/macos/embed_demo_runtime.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -411,6 +411,7 @@
 				CODE_SIGN_STYLE = Manual;
 				DEFINES_MODULE = YES;
 				DEAD_CODE_STRIPPING = YES;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
@@ -442,6 +443,7 @@
 				CODE_SIGN_STYLE = Manual;
 				DEFINES_MODULE = YES;
 				DEAD_CODE_STRIPPING = YES;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
