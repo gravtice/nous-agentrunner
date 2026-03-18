@@ -26,7 +26,7 @@ func (s *Server) startVsockTunnelServer(ctx context.Context) error {
 		return nil
 	}
 	if s.cfg.VsockTunnelPort > 0xffff {
-		return fmt.Errorf("NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT must be 1..65535, got %d", s.cfg.VsockTunnelPort)
+		return fmt.Errorf("AGENT_RUNNER_VSOCK_TUNNEL_PORT must be 1..65535, got %d", s.cfg.VsockTunnelPort)
 	}
 
 	fd, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM, 0)

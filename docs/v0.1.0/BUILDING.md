@@ -1,18 +1,18 @@
 # 构建与打包（v0.1.0 / MVP）
 
-目标：在 macOS 14+（Apple Silicon）上构建并打包 Nous Agent Runner（Host+Guest）以及首发 `claude-agent-service`。
+目标：在 macOS 14+（Apple Silicon）上构建并打包 Agent Runner（Host+Guest）以及首发 `claude-agent-service`。
 
 ## 1. 先决条件
 
 - macOS 14+ / Apple Silicon
 - Xcode（用于 Demo UI App）
-- Go（用于 `nous-agent-runnerd` / `nous-guest-runnerd` / `limactl`）
+- Go（用于 `agent-runnerd` / `guest-runnerd` / `limactl`）
 - Docker（用于构建 `claude-agent-service` 镜像；或在 VM 内用 `nerdctl` 构建）
 - 本仓库包含 submodules：首次 clone 后执行 `git submodule update --init --recursive`
 
 版本：
 
-- `VERSION` 是打包/离线资产的单一事实来源（`NOUS_AGENT_RUNNER_VERSION` / `NOUS_VM_VERSION`）。
+- `VERSION` 是打包/离线资产的单一事实来源（`AGENT_RUNNER_VERSION` / `AGENT_RUNNER_VM_VERSION`）。
 - Lima 通过 submodule `references/lima` 固定到 tag `v2.0.3`。
 
 ## 2. 构建二进制
@@ -21,8 +21,8 @@
 
 产物输出到 `dist/`：
 
-- `dist/nous-agent-runnerd`（darwin/arm64）
-- `dist/nous-guest-runnerd`（linux/arm64，供 VM 内 systemd 启动）
+- `dist/agent-runnerd`（darwin/arm64）
+- `dist/guest-runnerd`（linux/arm64，供 VM 内 systemd 启动）
 - `dist/limactl`（darwin/arm64，作为内部 VM 后端）
 - `dist/lima-guestagent.Linux-aarch64`（linux/arm64，供 Lima hostagent 使用）
 - `dist/lima-templates/`（Lima templates，供 `template:*` 解析）
@@ -31,7 +31,7 @@
 
 在仓库根目录执行：
 
-`docker build -f services/claude-agent-service/Dockerfile -t docker.io/gravtice/nous-claude-agent-service:$(awk -F= '$1=="NOUS_AGENT_RUNNER_VERSION"{print $2; exit}' VERSION) .`
+`docker build -f services/claude-agent-service/Dockerfile -t docker.io/gravtice/agent-runner-claude-agent-service:$(awk -F= '$1=="AGENT_RUNNER_VERSION"{print $2; exit}' VERSION) .`
 
 说明：
 
@@ -40,7 +40,7 @@
 
 ## 4. Demo App（UI）
 
-当前 Demo 以 SwiftPM + SwiftUI 形式提供：`demo/macos/NousAgentRunnerDemo/`。
+当前 Demo 以 SwiftPM + SwiftUI 形式提供：`demo/macos/AgentRunnerDemo/`。
 
 建议用 Xcode 打开并运行；打包成 `.app` 后再生成 DMG。
 
@@ -79,8 +79,8 @@
 
 Runner 行为：
 
-- 若 App bundle 内存在 `nous-offline-assets/manifest.json`，Runner 会把资源复制到
-  `~/Library/Caches/NousAgentRunner/<instance_id>/SharedTmp/OfflineAssets/`，并在生成 Lima YAML 时优先使用本地路径，从而避免首次启动下载。
+- 若 App bundle 内存在 `agent-runner-offline-assets/manifest.json`，Runner 会把资源复制到
+  `~/Library/Caches/AgentRunner/<instance_id>/SharedTmp/OfflineAssets/`，并在生成 Lima YAML 时优先使用本地路径，从而避免首次启动下载。
 - 若 manifest 内包含 `images[]`，Runner 会在 `Create Service` 时优先把对应 tar 包导入到 VM 的 containerd（避免从 registry 拉取镜像）。
 
 注意：

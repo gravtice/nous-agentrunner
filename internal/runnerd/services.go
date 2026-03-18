@@ -716,7 +716,15 @@ func validateServiceEnv(in map[string]string) (map[string]string, error) {
 }
 
 func isReservedServiceEnvKey(key string) bool {
-	return strings.HasPrefix(key, "NOUS_RUNNER_")
+	switch key {
+	case "AGENT_RUNNER_SERVICE_PORT",
+		"AGENT_RUNNER_SERVICE_CONFIG_B64",
+		"AGENT_RUNNER_SHARE_DIRS_B64",
+		"AGENT_RUNNER_MAX_INLINE_BYTES":
+		return true
+	default:
+		return false
+	}
 }
 
 func isValidEnvKey(key string) bool {

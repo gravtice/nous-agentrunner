@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PROJ="${ROOT_DIR}/demo/macos/NousAgentRunnerDemo/NousAgentRunnerDemo.xcodeproj"
+PROJ="${ROOT_DIR}/demo/macos/AgentRunnerDemo/AgentRunnerDemo.xcodeproj"
 ARCH="$(uname -m)"
 
 if command -v osascript >/dev/null 2>&1; then
@@ -36,5 +36,5 @@ fi
 
 xcodebuild test \
   -project "$PROJ" \
-  -scheme NousAgentRunnerDemo \
+  -scheme AgentRunnerDemo \
   -destination "platform=macOS,arch=${ARCH}"

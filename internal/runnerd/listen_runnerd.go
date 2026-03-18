@@ -93,7 +93,7 @@ func listenRunnerdHTTP(cfg Config) (net.Listener, Config, bool, error) {
 		}
 		cfg.ListenPort = port
 		if err := persistEnvLocalUpdates(cfg.Paths, map[string]string{
-			"NOUS_AGENT_RUNNER_PORT": strconv.Itoa(cfg.ListenPort),
+			"AGENT_RUNNER_PORT": strconv.Itoa(cfg.ListenPort),
 		}); err != nil {
 			_ = ln.Close()
 			return nil, cfg, false, err
@@ -119,7 +119,7 @@ func listenRunnerdHTTP(cfg Config) (net.Listener, Config, bool, error) {
 	}
 	cfg.ListenPort = port
 	if err := persistEnvLocalUpdates(cfg.Paths, map[string]string{
-		"NOUS_AGENT_RUNNER_PORT": strconv.Itoa(cfg.ListenPort),
+		"AGENT_RUNNER_PORT": strconv.Itoa(cfg.ListenPort),
 	}); err != nil {
 		_ = ln.Close()
 		return nil, cfg, false, err

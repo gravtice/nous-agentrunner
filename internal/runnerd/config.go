@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gravtice/nous-agent-runner/internal/envfile"
-	"github.com/gravtice/nous-agent-runner/internal/platformpaths"
+	"github.com/gravtice/agent-runner/internal/envfile"
+	"github.com/gravtice/agent-runner/internal/platformpaths"
 	"howett.net/plist"
 )
 
@@ -57,7 +57,7 @@ type instanceConfig struct {
 }
 
 func loadInstanceID() string {
-	if raw := strings.TrimSpace(os.Getenv("NOUS_AGENT_RUNNER_INSTANCE_ID")); raw != "" {
+	if raw := runnerRuntimeEnv("AGENT_RUNNER_INSTANCE_ID"); raw != "" {
 		if isSafeInstanceID(raw) {
 			return raw
 		}
@@ -66,10 +66,7 @@ func loadInstanceID() string {
 	// Zero-parameter: read config file near executable or Resources.
 	exe, err := os.Executable()
 	if err == nil {
-		for _, cand := range []string{
-			filepath.Join(filepath.Dir(exe), "NousAgentRunnerConfig.json"),
-			filepath.Clean(filepath.Join(filepath.Dir(exe), "..", "Resources", "NousAgentRunnerConfig.json")),
-		} {
+		for _, cand := range runnerConfigCandidates(exe) {
 			b, err := os.ReadFile(cand)
 			if err != nil {
 				continue
@@ -173,7 +170,7 @@ func isSafeInstanceID(s string) bool {
 }
 
 func deriveSafeLimaInstanceName(limaHome, instanceID string) string {
-	name := "nous-" + instanceID
+	name := limaInstancePrefix + instanceID
 	if runtime.GOOS != "darwin" || limaHome == "" {
 		return name
 	}
@@ -187,9 +184,9 @@ func deriveSafeLimaInstanceName(limaHome, instanceID string) string {
 	}
 
 	if short := deriveShortHash(instanceID); short != "" {
-		return "nous-" + short
+		return limaInstancePrefix + short
 	}
-	return "nous-default"
+	return limaInstancePrefix + "default"
 }
 
 func LoadConfig() (Config, error) {
@@ -209,41 +206,30 @@ func LoadConfig() (Config, error) {
 
 	_ = loadedEnvPath
 
-	port := mustParseInt(env["NOUS_AGENT_RUNNER_PORT"], 0)
+	port := runnerEnvInt(env, "AGENT_RUNNER_PORT")
 	if port == 0 {
 		port, err = pickFreeLocalPort()
 		if err != nil {
 			return Config{}, err
 		}
 		if err := persistEnv(filepath.Join(paths.AppSupportDir, ".env.local"), env, map[string]string{
-			"NOUS_AGENT_RUNNER_PORT": strconv.Itoa(port),
+			"AGENT_RUNNER_PORT": strconv.Itoa(port),
 		}); err != nil {
 			return Config{}, err
 		}
 	}
 
-	registryBase := strings.TrimSpace(env["NOUS_AGENT_RUNNER_REGISTRY_BASE"])
+	registryBase := runnerEnvValue(env, "AGENT_RUNNER_REGISTRY_BASE")
 	if registryBase == "" {
 		// Official registry base (single source of truth).
 		// Docker Hub canonical prefix: docker.io/<namespace>/
 		registryBase = "docker.io/gravtice/"
 	}
-	// Backward-compatible migration: early versions used registry.nous.ai as default.
-	// If the user still has that value in their persisted .env.local, upgrade it to Docker Hub.
-	legacyBase := strings.TrimSuffix(registryBase, "/")
-	if legacyBase == "registry.nous.ai" || legacyBase == "registry.nous.ai/gravtice" {
-		registryBase = "docker.io/gravtice/"
-		if err := persistEnv(filepath.Join(paths.AppSupportDir, ".env.local"), env, map[string]string{
-			"NOUS_AGENT_RUNNER_REGISTRY_BASE": registryBase,
-		}); err != nil {
-			return Config{}, err
-		}
-	}
 	if !strings.HasSuffix(registryBase, "/") {
 		registryBase += "/"
 	}
 
-	limactlPath := env["NOUS_AGENT_RUNNER_LIMACTL_PATH"]
+	limactlPath := runnerEnvValue(env, "AGENT_RUNNER_LIMACTL_PATH")
 	if limactlPath == "" {
 		limactlPath = findBundledTool("limactl")
 		if limactlPath == "" {
@@ -251,44 +237,47 @@ func LoadConfig() (Config, error) {
 		}
 	}
 
-	limaTemplatesPath := strings.TrimSpace(env["NOUS_AGENT_RUNNER_LIMA_TEMPLATES_PATH"])
+	limaTemplatesPath := runnerEnvValue(env, "AGENT_RUNNER_LIMA_TEMPLATES_PATH")
 	if limaTemplatesPath == "" {
 		limaTemplatesPath = findBundledDir("lima-templates")
 	}
 
-	limaBaseTemplate := strings.TrimSpace(env["NOUS_AGENT_RUNNER_LIMA_BASE_TEMPLATE"])
+	limaBaseTemplate := runnerEnvValue(env, "AGENT_RUNNER_LIMA_BASE_TEMPLATE")
 	if limaBaseTemplate == "" {
 		// Debian is a stable default and avoids Ubuntu cloud image endpoints that may be blocked in some networks.
 		// Use the image-only template to avoid inheriting implicit default mounts from base templates.
 		limaBaseTemplate = "_images/debian-12"
 	}
 	if !isSafeLimaTemplateName(limaBaseTemplate) {
-		return Config{}, fmt.Errorf("invalid NOUS_AGENT_RUNNER_LIMA_BASE_TEMPLATE %q", limaBaseTemplate)
+		return Config{}, fmt.Errorf("invalid AGENT_RUNNER_LIMA_BASE_TEMPLATE %q", limaBaseTemplate)
 	}
 
-	httpProxy := strings.TrimSpace(env["NOUS_AGENT_RUNNER_HTTP_PROXY"])
-	httpsProxy := strings.TrimSpace(env["NOUS_AGENT_RUNNER_HTTPS_PROXY"])
-	noProxy := strings.TrimSpace(env["NOUS_AGENT_RUNNER_NO_PROXY"])
+	httpProxy := runnerEnvValue(env, "AGENT_RUNNER_HTTP_PROXY")
+	httpsProxy := runnerEnvValue(env, "AGENT_RUNNER_HTTPS_PROXY")
+	noProxy := runnerEnvValue(env, "AGENT_RUNNER_NO_PROXY")
 
-	guestBinaryPath := strings.TrimSpace(env["NOUS_AGENT_RUNNER_GUEST_BINARY_PATH"])
+	guestBinaryPath := runnerEnvValue(env, "AGENT_RUNNER_GUEST_BINARY_PATH")
 	if guestBinaryPath == "" {
 		exe, err := os.Executable()
 		if err == nil {
-			guestBinaryPath = filepath.Clean(filepath.Join(filepath.Dir(exe), "..", "Resources", "nous-guest-runnerd"))
+			guestBinaryPath = firstExistingFile(bundledExecutableCandidates(
+				exe,
+				guestRunnerBinaryName,
+			)...)
 		}
 	}
 
-	maxInlineBytes := int64(mustParseInt(env["NOUS_AGENT_RUNNER_MAX_INLINE_BYTES"], 0))
+	maxInlineBytes := int64(runnerEnvInt(env, "AGENT_RUNNER_MAX_INLINE_BYTES"))
 	if maxInlineBytes == 0 {
 		maxInlineBytes = 8 * 1024 * 1024
 	}
 
-	guestPort := mustParseInt(env["NOUS_GUEST_RUNNERD_PORT"], 0)
+	guestPort := runnerEnvInt(env, "AGENT_RUNNER_GUEST_RUNNERD_PORT")
 	if guestPort == 0 {
 		guestPort = 17777
 	}
 
-	guestForwardPort := mustParseInt(env["NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT"], 0)
+	guestForwardPort := runnerEnvInt(env, "AGENT_RUNNER_GUEST_FORWARD_PORT")
 	if guestForwardPort == 0 {
 		for range 16 {
 			guestForwardPort, err = pickFreeLocalPort()
@@ -300,18 +289,18 @@ func LoadConfig() (Config, error) {
 			}
 		}
 		if guestForwardPort == port {
-			return Config{}, fmt.Errorf("failed to allocate guest forward port distinct from NOUS_AGENT_RUNNER_PORT (%d)", port)
+			return Config{}, fmt.Errorf("failed to allocate guest forward port distinct from AGENT_RUNNER_PORT (%d)", port)
 		}
 		if err := persistEnv(filepath.Join(paths.AppSupportDir, ".env.local"), env, map[string]string{
-			"NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT": strconv.Itoa(guestForwardPort),
+			"AGENT_RUNNER_GUEST_FORWARD_PORT": strconv.Itoa(guestForwardPort),
 		}); err != nil {
 			return Config{}, err
 		}
 	} else if guestForwardPort == port {
-		return Config{}, fmt.Errorf("NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT conflicts with NOUS_AGENT_RUNNER_PORT (%d)", port)
+		return Config{}, fmt.Errorf("AGENT_RUNNER_GUEST_FORWARD_PORT conflicts with AGENT_RUNNER_PORT (%d)", port)
 	}
 
-	vsockTunnelPort := mustParseInt(env["NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT"], 0)
+	vsockTunnelPort := runnerEnvInt(env, "AGENT_RUNNER_VSOCK_TUNNEL_PORT")
 	// Negative values disable vsock tunnel auto-allocation on darwin.
 	// This allows runnerd to start on hosts that do not support AF_VSOCK.
 	if vsockTunnelPort < 0 {
@@ -326,7 +315,7 @@ func LoadConfig() (Config, error) {
 					// Persist a sentinel to avoid repeated startup probes on hosts
 					// where AF_VSOCK is unavailable.
 					if err := persistEnv(filepath.Join(paths.AppSupportDir, ".env.local"), env, map[string]string{
-						"NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT": "-1",
+						"AGENT_RUNNER_VSOCK_TUNNEL_PORT": "-1",
 					}); err != nil {
 						return Config{}, err
 					}
@@ -336,7 +325,7 @@ func LoadConfig() (Config, error) {
 			}
 			if vsockTunnelPort > 0 {
 				if err := persistEnv(filepath.Join(paths.AppSupportDir, ".env.local"), env, map[string]string{
-					"NOUS_AGENT_RUNNER_VSOCK_TUNNEL_PORT": strconv.Itoa(vsockTunnelPort),
+					"AGENT_RUNNER_VSOCK_TUNNEL_PORT": strconv.Itoa(vsockTunnelPort),
 				}); err != nil {
 					return Config{}, err
 				}
@@ -358,8 +347,8 @@ func LoadConfig() (Config, error) {
 		return Config{}, err
 	}
 
-	vmCPU := mustParseInt(env["NOUS_AGENT_RUNNER_VM_CPU_CORES"], 0)
-	vmMemMiB := mustParseInt(env["NOUS_AGENT_RUNNER_VM_MEMORY_MB"], 0)
+	vmCPU := runnerEnvInt(env, "AGENT_RUNNER_VM_CPU_CORES")
+	vmMemMiB := runnerEnvInt(env, "AGENT_RUNNER_VM_MEMORY_MB")
 	if vmMemMiB == 0 {
 		vmMemMiB = 4096
 	}

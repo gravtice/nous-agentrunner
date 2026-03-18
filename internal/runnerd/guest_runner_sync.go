@@ -13,14 +13,14 @@ import (
 	"strings"
 )
 
-const guestRunnerDstPath = "/usr/local/bin/nous-guest-runnerd"
+const guestRunnerDstPath = "/usr/local/bin/guest-runnerd"
 
 func (s *Server) syncGuestRunnerBinary(ctx context.Context) error {
 	if runtime.GOOS != "darwin" {
 		return nil
 	}
 
-	stagedPath := filepath.Join(s.cfg.Paths.DefaultSharedTmpDir, "nous-guest-runnerd")
+	stagedPath := filepath.Join(s.cfg.Paths.DefaultSharedTmpDir, guestRunnerBinaryName)
 	s.guestRunnerSyncMu.Lock()
 	defer s.guestRunnerSyncMu.Unlock()
 
@@ -97,7 +97,17 @@ if [ ! -x "$dst" ]; then
   exit 0
 fi
 sha256sum "$dst" | awk '{print $1}'`
-	out, err := s.runLimactl(ctx, "shell", s.cfg.LimaInstanceName, "--", "bash", "-c", script, "--", guestRunnerDstPath)
+	out, err := s.runLimactl(
+		ctx,
+		"shell",
+		s.cfg.LimaInstanceName,
+		"--",
+		"bash",
+		"-c",
+		script,
+		"--",
+		guestRunnerDstPath,
+	)
 	if err != nil {
 		return "", err
 	}
@@ -116,6 +126,7 @@ func (s *Server) installGuestRunnerBinary(ctx context.Context, src, dst string) 
 	script := `set -euo pipefail
 src="$1"
 dst="$2"
+service_name="$3"
 i=0
 while [ $i -lt 60 ] && [ ! -x "$src" ]; do
   sleep 1
@@ -126,9 +137,21 @@ if [ ! -x "$src" ]; then
   exit 2
 fi
 sudo -n install -m 0755 "$src" "$dst"
-sudo -n systemctl restart nous-guest-runnerd
-sudo -n systemctl is-active --quiet nous-guest-runnerd`
-	_, err := s.runLimactl(ctx, "shell", s.cfg.LimaInstanceName, "--", "bash", "-c", script, "--", src, dst)
+sudo -n systemctl restart "$service_name"
+sudo -n systemctl is-active --quiet "$service_name"`
+	_, err := s.runLimactl(
+		ctx,
+		"shell",
+		s.cfg.LimaInstanceName,
+		"--",
+		"bash",
+		"-c",
+		script,
+		"--",
+		src,
+		dst,
+		guestRunnerServiceName,
+	)
 	return err
 }
 

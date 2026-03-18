@@ -44,8 +44,16 @@ DEFAULT_ALLOWED_TOOLS_ALL = [
 ]
 
 
-def _env_int(name: str, default: int) -> int:
-    v = os.getenv(name)
+def _env_get(*names: str, default: str = "") -> str:
+    for name in names:
+        v = os.getenv(name)
+        if v:
+            return v
+    return default
+
+
+def _env_int(default: int, *names: str) -> int:
+    v = _env_get(*names)
     if not v:
         return default
     try:
@@ -54,8 +62,8 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-def _load_b64_json_env(name: str, default: Any) -> Any:
-    raw = os.getenv(name, "")
+def _load_b64_json_env(default: Any, *names: str) -> Any:
+    raw = _env_get(*names)
     if not raw:
         return default
     try:
@@ -66,7 +74,7 @@ def _load_b64_json_env(name: str, default: Any) -> Any:
 
 
 def _decode_service_config() -> dict[str, Any]:
-    raw = os.getenv("NOUS_RUNNER_SERVICE_CONFIG_B64", "")
+    raw = _env_get("AGENT_RUNNER_SERVICE_CONFIG_B64")
     if not raw:
         return {}
     decoded = base64.b64decode(raw.encode("utf-8"), validate=True)
@@ -355,12 +363,15 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
     session_id = request.query.get("session_id") or os.urandom(8).hex()
     await ws.send_json({"type": "session.started", "session_id": session_id})
 
-    max_inline = _env_int("NOUS_RUNNER_MAX_INLINE_BYTES", 8 * 1024 * 1024)
-    ask_timeout_seconds = float(os.getenv("NOUS_ASK_TIMEOUT_SECONDS", "300") or "300")
-    first_event_timeout_seconds = float(os.getenv("NOUS_FIRST_EVENT_TIMEOUT_SECONDS", "20") or "20")
+    max_inline = _env_int(8 * 1024 * 1024, "AGENT_RUNNER_MAX_INLINE_BYTES")
+    ask_timeout_seconds = float(_env_get("AGENT_RUNNER_ASK_TIMEOUT_SECONDS", default="300") or "300")
+    first_event_timeout_seconds = float(
+        _env_get("AGENT_RUNNER_FIRST_EVENT_TIMEOUT_SECONDS", default="20")
+        or "20"
+    )
     if first_event_timeout_seconds <= 0:
         first_event_timeout_seconds = 20.0
-    share_dirs = _load_b64_json_env("NOUS_RUNNER_SHARE_DIRS_B64", [])
+    share_dirs = _load_b64_json_env([], "AGENT_RUNNER_SHARE_DIRS_B64")
     if not isinstance(share_dirs, list):
         share_dirs = []
     share_dirs = [str(x) for x in share_dirs if str(x)]
@@ -382,7 +393,7 @@ async def ws_chat(request: web.Request) -> web.WebSocketResponse:
         await ws.close()
         return ws
 
-    session_tmp = tempfile.TemporaryDirectory(prefix=f"nous-claude-{session_id}-")
+    session_tmp = tempfile.TemporaryDirectory(prefix=f"agent-runner-claude-{session_id}-")
     session_dir = Path(session_tmp.name)
 
     try:
@@ -817,7 +828,7 @@ async def health(_: web.Request) -> web.Response:
 
 
 async def run() -> None:
-    port = _env_int("NOUS_RUNNER_SERVICE_PORT", 8000)
+    port = _env_int(8000, "AGENT_RUNNER_SERVICE_PORT")
 
     app = web.Application()
     app.router.add_get("/health", health)

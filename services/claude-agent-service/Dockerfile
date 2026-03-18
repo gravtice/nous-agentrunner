@@ -53,7 +53,7 @@ COPY services/claude-agent-service /app
 RUN pip install --no-cache-dir . \
     && rm -rf /root/.cache/pip
 
-ENV NOUS_RUNNER_SERVICE_PORT=8000
+ENV AGENT_RUNNER_SERVICE_PORT=8000
 EXPOSE 8000
 
 CMD ["claude-agent-service"]

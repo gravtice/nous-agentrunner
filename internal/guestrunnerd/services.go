@@ -162,10 +162,10 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 		args = append(args, "-e", "HOME=/tmp")
 	}
 	args = append(args,
-		"-e", fmt.Sprintf("NOUS_RUNNER_SERVICE_PORT=%d", port),
-		"-e", fmt.Sprintf("NOUS_RUNNER_SERVICE_CONFIG_B64=%s", req.ServiceConfigB64),
-		"-e", fmt.Sprintf("NOUS_RUNNER_SHARE_DIRS_B64=%s", shareDirsB64),
-		"-e", fmt.Sprintf("NOUS_RUNNER_MAX_INLINE_BYTES=%d", req.MaxInlineBytes),
+		"-e", fmt.Sprintf("AGENT_RUNNER_SERVICE_PORT=%d", port),
+		"-e", fmt.Sprintf("AGENT_RUNNER_SERVICE_CONFIG_B64=%s", req.ServiceConfigB64),
+		"-e", fmt.Sprintf("AGENT_RUNNER_SHARE_DIRS_B64=%s", shareDirsB64),
+		"-e", fmt.Sprintf("AGENT_RUNNER_MAX_INLINE_BYTES=%d", req.MaxInlineBytes),
 	)
 
 	if len(req.Env) > 0 {
@@ -211,7 +211,7 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 		//
 		// Don't mount directly into $HOME/.claude/skills: some runtimes create the mountpoint (and parents)
 		// as root-owned, which can break Claude Code when it tries to write under $HOME/.claude.
-		skillsMount = "/tmp/.nous-skills"
+		skillsMount = "/tmp/.agent-runner-skills"
 		args = append(args, "--mount", fmt.Sprintf("type=bind,src=%s,dst=%s,rw", skillsDir, skillsMount))
 	}
 	for _, p := range req.ShareExcludes {
@@ -239,7 +239,7 @@ func (s *Server) startServiceContainer(ctx context.Context, containerName string
 	return nil
 }
 
-func denyDirPath() string { return "/run/nous-deny/dir" }
+func denyDirPath() string { return "/run/agent-runner-deny/dir" }
 
 func (s *Server) applyShareExcludes(shares []string, excludes []string) error {
 	if runtime.GOOS != "linux" {
@@ -286,7 +286,7 @@ func (s *Server) applyShareExcludes(shares []string, excludes []string) error {
 }
 
 func ensureDenyDir() error {
-	base := "/run/nous-deny"
+	base := "/run/agent-runner-deny"
 	dir := denyDirPath()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("mkdir %q: %w", dir, err)
@@ -477,7 +477,15 @@ func validateServiceEnv(in map[string]string) error {
 }
 
 func isReservedServiceEnvKey(key string) bool {
-	return strings.HasPrefix(key, "NOUS_RUNNER_")
+	switch key {
+	case "AGENT_RUNNER_SERVICE_PORT",
+		"AGENT_RUNNER_SERVICE_CONFIG_B64",
+		"AGENT_RUNNER_SHARE_DIRS_B64",
+		"AGENT_RUNNER_MAX_INLINE_BYTES":
+		return true
+	default:
+		return false
+	}
 }
 
 func isValidEnvKey(key string) bool {

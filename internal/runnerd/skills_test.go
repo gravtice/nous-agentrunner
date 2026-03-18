@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gravtice/nous-agent-runner/internal/platformpaths"
+	"github.com/gravtice/agent-runner/internal/platformpaths"
 )
 
 func TestParseSkillSource_GitHubShorthand(t *testing.T) {
@@ -145,7 +145,7 @@ func TestSkillsInstall_List_Delete(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(appSupport, "skills", "foo", "SKILL.md")); err != nil {
 			t.Fatalf("installed skill missing: %v", err)
 		}
-		if _, err := os.Stat(filepath.Join(appSupport, "skills", "foo", ".nous-source.json")); err != nil {
+		if _, err := os.Stat(filepath.Join(appSupport, "skills", "foo", ".agent-runner-source.json")); err != nil {
 			t.Fatalf("source metadata missing: %v", err)
 		}
 	})

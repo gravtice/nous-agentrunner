@@ -30,8 +30,8 @@ case "$cmd" in
     for a in "$@"; do
       if [ "$prev" = "-e" ]; then
         case "$a" in
-          NOUS_RUNNER_SERVICE_PORT=*)
-            port="${a#NOUS_RUNNER_SERVICE_PORT=}"
+          AGENT_RUNNER_SERVICE_PORT=*)
+            port="${a#AGENT_RUNNER_SERVICE_PORT=}"
             ;;
         esac
       fi
@@ -329,10 +329,10 @@ func TestM2_HandleServiceCreate_BuildsMounts(t *testing.T) {
 	if !strings.Contains(log, "type=bind,src="+rwDir+",dst="+rwDir+",rw") {
 		t.Fatalf("expected rw mount in log, got:\n%s", log)
 	}
-	if !strings.Contains(log, "type=bind,src=/run/nous-deny/dir,dst="+excludeDir+",ro") {
+	if !strings.Contains(log, "type=bind,src=/run/agent-runner-deny/dir,dst="+excludeDir+",ro") {
 		t.Fatalf("expected exclude mount in log, got:\n%s", log)
 	}
-	if !strings.Contains(log, "-e NOUS_RUNNER_MAX_INLINE_BYTES=1234") {
+	if !strings.Contains(log, "-e AGENT_RUNNER_MAX_INLINE_BYTES=1234") {
 		t.Fatalf("expected max bytes env in log, got:\n%s", log)
 	}
 	if !strings.Contains(log, "-e ANTHROPIC_API_KEY=shh") {
@@ -401,14 +401,14 @@ func TestM2_HandleServiceCreate_MountsSkillsDir(t *testing.T) {
 		t.Fatalf("read nerdctl log: %v", err)
 	}
 	log := string(logBytes)
-	if !strings.Contains(log, "--mount type=bind,src="+skillsDir+",dst=/tmp/.nous-skills,rw") {
+	if !strings.Contains(log, "--mount type=bind,src="+skillsDir+",dst=/tmp/.agent-runner-skills,rw") {
 		t.Fatalf("expected skills dir bind mount in log, got:\n%s", log)
 	}
-	if !strings.Contains(log, "sh -lc ") || !strings.Contains(log, "ln -s /tmp/.nous-skills /tmp/.claude/skills") {
+	if !strings.Contains(log, "sh -lc ") || !strings.Contains(log, "ln -s /tmp/.agent-runner-skills /tmp/.claude/skills") {
 		t.Fatalf("expected skills symlink bootstrap in log, got:\n%s", log)
 	}
-	if strings.Contains(log, "NOUS_SKILLS_DIR=") {
-		t.Fatalf("did not expect NOUS_SKILLS_DIR env in log, got:\n%s", log)
+	if strings.Contains(log, "AGENT_RUNNER_SKILLS_DIR=") {
+		t.Fatalf("did not expect AGENT_RUNNER_SKILLS_DIR env in log, got:\n%s", log)
 	}
 	if strings.Contains(log, "cp -a") {
 		t.Fatalf("did not expect skills copy in log, got:\n%s", log)

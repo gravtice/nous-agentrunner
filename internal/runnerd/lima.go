@@ -210,7 +210,7 @@ func (s *Server) ensureVMRunning(ctx context.Context) error {
 
 func (s *Server) ensureGuestForwardPortAvailable() error {
 	if s.cfg.GuestForwardPort <= 0 || s.cfg.GuestForwardPort > 65535 {
-		return fmt.Errorf("invalid NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT %d", s.cfg.GuestForwardPort)
+		return fmt.Errorf("invalid AGENT_RUNNER_GUEST_FORWARD_PORT %d", s.cfg.GuestForwardPort)
 	}
 	addr := fmt.Sprintf("127.0.0.1:%d", s.cfg.GuestForwardPort)
 	ln, err := net.Listen("tcp", addr)
@@ -234,10 +234,10 @@ func (s *Server) ensureGuestForwardPortAvailable() error {
 		}
 	}
 	if newPort == 0 {
-		return fmt.Errorf("failed to allocate guest forward port distinct from NOUS_AGENT_RUNNER_PORT (%d)", s.cfg.ListenPort)
+		return fmt.Errorf("failed to allocate guest forward port distinct from AGENT_RUNNER_PORT (%d)", s.cfg.ListenPort)
 	}
 	if err := persistEnvLocalUpdates(s.cfg.Paths, map[string]string{
-		"NOUS_AGENT_RUNNER_GUEST_FORWARD_PORT": strconv.Itoa(newPort),
+		"AGENT_RUNNER_GUEST_FORWARD_PORT": strconv.Itoa(newPort),
 	}); err != nil {
 		return err
 	}
@@ -257,7 +257,7 @@ func needsRecreateForGuestChannel(instanceYAMLPath string, cfg Config) bool {
 	if !strings.Contains(s, fmt.Sprintf("hostPort: %d", cfg.GuestForwardPort)) {
 		return true
 	}
-	if !strings.Contains(s, "nous-guest-runnerd") {
+	if !strings.Contains(s, guestRunnerServiceName) {
 		return true
 	}
 	return false
@@ -506,11 +506,11 @@ func buildLimaYAML(cfg Config, shares []shareEntry, assets *offlineAssets) strin
 	b.WriteString("  script: |\n")
 	b.WriteString("    #!/bin/bash\n")
 	b.WriteString("    set -euo pipefail\n")
-	fmt.Fprintf(&b, "    BIN_SRC=%s\n", yamlQuote(filepath.Join(cfg.Paths.DefaultSharedTmpDir, "nous-guest-runnerd")))
-	b.WriteString("    BIN_DST=/usr/local/bin/nous-guest-runnerd\n")
+	fmt.Fprintf(&b, "    BIN_SRC=%s\n", yamlQuote(filepath.Join(cfg.Paths.DefaultSharedTmpDir, guestRunnerBinaryName)))
+	fmt.Fprintf(&b, "    BIN_DST=/usr/local/bin/%s\n", guestRunnerBinaryName)
 	fmt.Fprintf(&b, "    PORT=%d\n", cfg.GuestRunnerPort)
 	fmt.Fprintf(&b, "    HOST_TUNNEL_VSOCK_PORT=%d\n", cfg.VsockTunnelPort)
-	b.WriteString("    STATE_DIR=/var/lib/nous-guest-runnerd\n")
+	fmt.Fprintf(&b, "    STATE_DIR=/var/lib/%s\n", guestRunnerBinaryName)
 	b.WriteString("    i=0\n")
 	b.WriteString("    while [ $i -lt 60 ] && [ ! -x \"$BIN_SRC\" ]; do\n")
 	b.WriteString("      sleep 1\n")
@@ -522,17 +522,17 @@ func buildLimaYAML(cfg Config, shares []shareEntry, assets *offlineAssets) strin
 	b.WriteString("    fi\n")
 	b.WriteString("    install -m 0755 \"$BIN_SRC\" \"$BIN_DST\"\n")
 	b.WriteString("    mkdir -p \"$STATE_DIR\"\n")
-	b.WriteString("    cat > /etc/systemd/system/nous-guest-runnerd.service <<EOF\n")
+	fmt.Fprintf(&b, "    cat > /etc/systemd/system/%s.service <<EOF\n", guestRunnerServiceName)
 	b.WriteString("    [Unit]\n")
-	b.WriteString("    Description=Nous Guest Runner Daemon\n")
+	b.WriteString("    Description=Agent Runner Guest Daemon\n")
 	b.WriteString("    After=network-online.target\n")
 	b.WriteString("    Wants=network-online.target\n")
 	b.WriteString("\n")
 	b.WriteString("    [Service]\n")
 	b.WriteString("    Type=simple\n")
-	b.WriteString("    Environment=NOUS_GUEST_RUNNERD_PORT=$PORT\n")
-	b.WriteString("    Environment=NOUS_GUEST_RUNNERD_STATE_DIR=$STATE_DIR\n")
-	b.WriteString("    Environment=NOUS_HOST_TUNNEL_VSOCK_PORT=$HOST_TUNNEL_VSOCK_PORT\n")
+	b.WriteString("    Environment=AGENT_RUNNER_GUEST_RUNNERD_PORT=$PORT\n")
+	b.WriteString("    Environment=AGENT_RUNNER_GUEST_RUNNERD_STATE_DIR=$STATE_DIR\n")
+	b.WriteString("    Environment=AGENT_RUNNER_HOST_TUNNEL_VSOCK_PORT=$HOST_TUNNEL_VSOCK_PORT\n")
 	b.WriteString("    ExecStart=$BIN_DST\n")
 	b.WriteString("    Restart=always\n")
 	b.WriteString("    RestartSec=1\n")
@@ -541,9 +541,9 @@ func buildLimaYAML(cfg Config, shares []shareEntry, assets *offlineAssets) strin
 	b.WriteString("    WantedBy=multi-user.target\n")
 	b.WriteString("    EOF\n")
 	b.WriteString("    systemctl daemon-reload\n")
-	b.WriteString("    systemctl enable --now nous-guest-runnerd\n")
-	b.WriteString("    systemctl restart nous-guest-runnerd\n")
-	b.WriteString("    systemctl is-active --quiet nous-guest-runnerd\n\n")
+	fmt.Fprintf(&b, "    systemctl enable --now %s\n", guestRunnerServiceName)
+	fmt.Fprintf(&b, "    systemctl restart %s\n", guestRunnerServiceName)
+	fmt.Fprintf(&b, "    systemctl is-active --quiet %s\n\n", guestRunnerServiceName)
 
 	b.WriteString("mounts:\n")
 	for _, e := range shares {

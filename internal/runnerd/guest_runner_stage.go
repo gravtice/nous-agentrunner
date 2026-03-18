@@ -12,7 +12,7 @@ import (
 func stageGuestRunnerBinary(cfg Config) error {
 	src := strings.TrimSpace(cfg.GuestBinaryPath)
 	if src == "" {
-		return errors.New("NOUS_AGENT_RUNNER_GUEST_BINARY_PATH is not configured")
+		return errors.New("AGENT_RUNNER_GUEST_BINARY_PATH is not configured")
 	}
 	fi, err := os.Stat(src)
 	if err != nil {
@@ -22,12 +22,19 @@ func stageGuestRunnerBinary(cfg Config) error {
 		return fmt.Errorf("guest runner binary is a directory: %q", src)
 	}
 
-	dst := filepath.Join(cfg.Paths.DefaultSharedTmpDir, "nous-guest-runnerd")
-	tmp := dst + ".tmp"
-
-	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+	if err := os.MkdirAll(cfg.Paths.DefaultSharedTmpDir, 0o700); err != nil {
 		return err
 	}
+
+	dst := filepath.Join(cfg.Paths.DefaultSharedTmpDir, guestRunnerBinaryName)
+	if err := copyExecutableFile(src, dst); err != nil {
+		return err
+	}
+	return nil
+}
+
+func copyExecutableFile(src, dst string) error {
+	tmp := dst + ".tmp"
 
 	in, err := os.Open(src)
 	if err != nil {
@@ -50,4 +57,3 @@ func stageGuestRunnerBinary(cfg Config) error {
 	}
 	return os.Rename(tmp, dst)
 }
-

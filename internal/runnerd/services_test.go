@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gravtice/nous-agent-runner/internal/platformpaths"
+	"github.com/gravtice/agent-runner/internal/platformpaths"
 )
 
 func TestServices_VMNotRunning_ReportsStopped(t *testing.T) {
@@ -17,7 +17,7 @@ func TestServices_VMNotRunning_ReportsStopped(t *testing.T) {
 		cfg: Config{
 			Token:            "tok",
 			LimaHome:         limaHome,
-			LimaInstanceName: "nous-test",
+			LimaInstanceName: "agent-test",
 			Paths:            platformpaths.Paths{AppSupportDir: appSupport},
 		},
 		services: make(map[string]Service),

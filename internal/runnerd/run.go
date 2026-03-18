@@ -20,7 +20,7 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	if alreadyRunning {
-		log.Printf("nous-agent-runnerd already running on http://%s:%d", cfg.ListenAddr, cfg.ListenPort)
+		log.Printf("agent-runnerd already running on http://%s:%d", cfg.ListenAddr, cfg.ListenPort)
 		return nil
 	}
 	if tcp, ok := ln.Addr().(*net.TCPAddr); ok {
@@ -54,7 +54,7 @@ func Run(ctx context.Context) error {
 		_ = srv.Close()
 	}()
 
-	log.Printf("nous-agent-runnerd listening on http://%s", ln.Addr().String())
+	log.Printf("agent-runnerd listening on http://%s", ln.Addr().String())
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		return err
 	}

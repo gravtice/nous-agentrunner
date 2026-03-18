@@ -52,6 +52,8 @@ type skillDiscoveredItem struct {
 	SkillPath   string `json:"skill_path,omitempty"`
 }
 
+const skillSourceInfoFile = ".agent-runner-source.json"
+
 func (s *Server) skillsDir() string {
 	return filepath.Join(s.cfg.Paths.AppSupportDir, "skills")
 }
@@ -84,7 +86,7 @@ func (s *Server) handleSkillsList(w http.ResponseWriter, r *http.Request) {
 		dir := filepath.Join(skillsDir, name)
 		hasSkillMD := isRegularFile(filepath.Join(dir, "SKILL.md"))
 		info := skillListItem{Name: name, HasSkillMD: hasSkillMD}
-		if src, ok := readSkillSourceInfo(filepath.Join(dir, ".nous-source.json")); ok {
+		if src, ok := readSkillSourceInfo(filepath.Join(dir, skillSourceInfoFile)); ok {
 			info.Source = &src
 		}
 		out = append(out, info)
@@ -531,7 +533,7 @@ func installSkillDir(srcDir, dstDir string, info skillSourceInfo, replace bool) 
 	if err := copyDirNoSymlinks(srcDir, tmp); err != nil {
 		return err
 	}
-	writeSkillSourceInfo(filepath.Join(tmp, ".nous-source.json"), info)
+	writeSkillSourceInfo(filepath.Join(tmp, skillSourceInfoFile), info)
 
 	if err := finalizeSkillInstall(tmp, dstDir, replace); err != nil {
 		return err

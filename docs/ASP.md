@@ -1,10 +1,10 @@
 # ASP（Agent Service Protocol）
 
-ASP 是 Nous Agent Runner 的**数据面**协议：用于与某个 Agent Service 进行**流式会话**交互。
+ASP 是 Agent Runner 的**数据面**协议：用于与某个 Agent Service 进行**流式会话**交互。
 
-对外 WebSocket 入口同样由 `nous-agent-runnerd` 暴露。它是 Runner 的 localhost gateway/server 组件，不是独立产品名。
+对外 WebSocket 入口同样由 `agent-runnerd` 暴露。它是 Runner 的 localhost gateway/server 组件，不是独立产品名。
 
-本文档以当前代码实现为准（`nous-agent-runnerd` 作为 WebSocket 网关，代理到 Guest/容器内的 `/v1/chat`）。
+本文档以当前代码实现为准（`agent-runnerd` 作为 WebSocket 网关，代理到 Guest/容器内的 `/v1/chat`）。
 
 ---
 
@@ -85,7 +85,7 @@ ASP 是 Nous Agent Runner 的**数据面**协议：用于与某个 Agent Service
   - `path` 必须是**绝对路径**、**真实存在**，且必须落在某个 Share 白名单目录内（含 canonicalize + 防 symlink 逃逸）
 - `{"type":"bytes","encoding":"base64","data":"...","mime":"..."}`
   - `encoding` 必须为 `"base64"`（大小写不敏感）
-  - base64 解码后字节数必须 `<= NOUS_AGENT_RUNNER_MAX_INLINE_BYTES`（默认 8MB）
+  - base64 解码后字节数必须 `<= AGENT_RUNNER_MAX_INLINE_BYTES`（默认 8MB）
 
 注意：
 

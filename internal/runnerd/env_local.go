@@ -3,8 +3,8 @@ package runnerd
 import (
 	"path/filepath"
 
-	"github.com/gravtice/nous-agent-runner/internal/envfile"
-	"github.com/gravtice/nous-agent-runner/internal/platformpaths"
+	"github.com/gravtice/agent-runner/internal/envfile"
+	"github.com/gravtice/agent-runner/internal/platformpaths"
 )
 
 func envCandidatePaths(appSupportDir string) []string {

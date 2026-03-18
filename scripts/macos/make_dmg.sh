@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DIST_DIR="${ROOT_DIR}/dist"
 
-APP_PATH="${DIST_DIR}/NousAgentRunnerDemo.app"
-DMG_PATH="${DIST_DIR}/NousAgentRunnerDemo.dmg"
+APP_PATH="${DIST_DIR}/AgentRunnerDemo.app"
+DMG_PATH="${DIST_DIR}/AgentRunnerDemo.dmg"
 
 if [ ! -d "${APP_PATH}" ]; then
   echo "missing app bundle: ${APP_PATH}" >&2
@@ -20,7 +20,7 @@ fi
 
 rm -f "${DMG_PATH}"
 hdiutil create \
-  -volname "Nous Agent Runner Demo" \
+  -volname "Agent Runner Demo" \
   -srcfolder "${APP_PATH}" \
   -ov -format UDZO \
   "${DMG_PATH}"

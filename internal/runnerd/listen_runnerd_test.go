@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/gravtice/nous-agent-runner/internal/envfile"
-	"github.com/gravtice/nous-agent-runner/internal/platformpaths"
+	"github.com/gravtice/agent-runner/internal/envfile"
+	"github.com/gravtice/agent-runner/internal/platformpaths"
 )
 
 func TestListenRunnerdHTTP_ReassignWhenPortInUse(t *testing.T) {
@@ -59,8 +59,8 @@ func TestListenRunnerdHTTP_ReassignWhenPortInUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load %s: %v", envPath, err)
 	}
-	if got := env["NOUS_AGENT_RUNNER_PORT"]; got != strconv.Itoa(newCfg.ListenPort) {
-		t.Fatalf("expected %s to contain NOUS_AGENT_RUNNER_PORT=%d, got %q", envPath, newCfg.ListenPort, got)
+	if got := env["AGENT_RUNNER_PORT"]; got != strconv.Itoa(newCfg.ListenPort) {
+		t.Fatalf("expected %s to contain AGENT_RUNNER_PORT=%d, got %q", envPath, newCfg.ListenPort, got)
 	}
 }
 

@@ -100,13 +100,13 @@ setup_go_toolchain() {
 
 setup_go_toolchain
 
-echo "[1/4] build nous-agent-runnerd (darwin/arm64)"
+echo "[1/4] build agent-runnerd (darwin/arm64)"
 GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
-  go build -o "${DIST_DIR}/nous-agent-runnerd" "${ROOT_DIR}/cmd/nous-agent-runnerd"
+  go build -o "${DIST_DIR}/agent-runnerd" "${ROOT_DIR}/cmd/agent-runnerd"
 
-echo "[2/4] build nous-guest-runnerd (linux/arm64)"
+echo "[2/4] build guest-runnerd (linux/arm64)"
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
-  go build -o "${DIST_DIR}/nous-guest-runnerd" "${ROOT_DIR}/cmd/nous-guest-runnerd"
+  go build -o "${DIST_DIR}/guest-runnerd" "${ROOT_DIR}/cmd/guest-runnerd"
 
 echo "[3/4] build limactl (darwin/arm64)"
 pushd "${ROOT_DIR}/references/lima" >/dev/null

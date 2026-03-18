@@ -26,27 +26,39 @@ func Resolve(instanceID string) (Paths, error) {
 
 	switch runtime.GOOS {
 	case "darwin":
-		appSupport := filepath.Join(home, "Library", "Application Support", "NousAgentRunner", instanceID)
-		logs := filepath.Join(home, "Library", "Logs", "NousAgentRunner", instanceID)
-		caches := filepath.Join(home, "Library", "Caches", "NousAgentRunner", instanceID)
-		return Paths{
-			InstanceID:          instanceID,
-			AppSupportDir:       appSupport,
-			LogsDir:             logs,
-			CachesDir:           caches,
-			DefaultSharedTmpDir: filepath.Join(caches, "SharedTmp"),
-		}, nil
+		return resolveNamedPaths(
+			home,
+			instanceID,
+			filepath.Join("Library", "Application Support"),
+			filepath.Join("Library", "Logs"),
+			filepath.Join("Library", "Caches"),
+		), nil
 	default:
 		// Dev-friendly fallback (not a product target).
-		appSupport := filepath.Join(home, ".local", "share", "NousAgentRunner", instanceID)
-		caches := filepath.Join(home, ".cache", "NousAgentRunner", instanceID)
-		return Paths{
-			InstanceID:          instanceID,
-			AppSupportDir:       appSupport,
-			LogsDir:             appSupport,
-			CachesDir:           caches,
-			DefaultSharedTmpDir: filepath.Join(caches, "SharedTmp"),
-		}, nil
+		return resolveNamedPaths(
+			home,
+			instanceID,
+			filepath.Join(".local", "share"),
+			filepath.Join(".local", "share"),
+			filepath.Join(".cache"),
+		), nil
+	}
+}
+
+func resolveNamedPaths(home, instanceID, appSupportBase, logsBase, cachesBase string) Paths {
+	return buildPaths(home, appSupportBase, logsBase, cachesBase, "AgentRunner", instanceID)
+}
+
+func buildPaths(home, appSupportBase, logsBase, cachesBase, appName, instanceID string) Paths {
+	appSupport := filepath.Join(home, appSupportBase, appName, instanceID)
+	logs := filepath.Join(home, logsBase, appName, instanceID)
+	caches := filepath.Join(home, cachesBase, appName, instanceID)
+	return Paths{
+		InstanceID:          instanceID,
+		AppSupportDir:       appSupport,
+		LogsDir:             logs,
+		CachesDir:           caches,
+		DefaultSharedTmpDir: filepath.Join(caches, "SharedTmp"),
 	}
 }
 

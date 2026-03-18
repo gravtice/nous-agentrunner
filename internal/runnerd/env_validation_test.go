@@ -10,7 +10,7 @@ func TestValidateServiceEnv(t *testing.T) {
 		t.Fatalf("nil env: out=%v err=%v", out, err)
 	}
 
-	if _, err := validateServiceEnv(map[string]string{"NOUS_RUNNER_SERVICE_PORT": "1"}); err == nil {
+	if _, err := validateServiceEnv(map[string]string{"AGENT_RUNNER_SERVICE_PORT": "1"}); err == nil {
 		t.Fatalf("expected reserved key error")
 	}
 
@@ -30,11 +30,11 @@ func TestValidateServiceEnv(t *testing.T) {
 		t.Fatalf("unexpected out: %#v", out)
 	}
 
-	out, err = validateServiceEnv(map[string]string{"NOUS_FIRST_EVENT_TIMEOUT_SECONDS": "1"})
+	out, err = validateServiceEnv(map[string]string{"AGENT_RUNNER_FIRST_EVENT_TIMEOUT_SECONDS": "1"})
 	if err != nil {
-		t.Fatalf("valid NOUS_* env: %v", err)
+		t.Fatalf("valid AGENT_RUNNER_* env: %v", err)
 	}
-	if out["NOUS_FIRST_EVENT_TIMEOUT_SECONDS"] != "1" {
+	if out["AGENT_RUNNER_FIRST_EVENT_TIMEOUT_SECONDS"] != "1" {
 		t.Fatalf("unexpected out: %#v", out)
 	}
 

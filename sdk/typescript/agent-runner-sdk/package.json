@@ -1,0 +1,54 @@
+{
+  "name": "agent-runner-sdk",
+  "version": "0.2.10",
+  "description": "Agent Runner TypeScript SDK (Node/Electron)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gravtice/agent-runner.git",
+    "directory": "sdk/typescript/agent-runner-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/gravtice/agent-runner/issues"
+  },
+  "homepage": "https://github.com/gravtice/agent-runner#readme",
+  "keywords": [
+    "agent-runner",
+    "sdk",
+    "electron",
+    "claude"
+  ],
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm test"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.3.3"
+  }
+}

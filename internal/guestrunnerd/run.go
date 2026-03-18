@@ -7,26 +7,27 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 )
 
 func Run(ctx context.Context) error {
 	port := 17777
-	if v := os.Getenv("NOUS_GUEST_RUNNERD_PORT"); v != "" {
+	if v := strings.TrimSpace(os.Getenv("AGENT_RUNNER_GUEST_RUNNERD_PORT")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			port = n
 		}
 	}
 
 	hostTunnelVsockPort := 0
-	if v := os.Getenv("NOUS_HOST_TUNNEL_VSOCK_PORT"); v != "" {
+	if v := strings.TrimSpace(os.Getenv("AGENT_RUNNER_HOST_TUNNEL_VSOCK_PORT")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			hostTunnelVsockPort = n
 		}
 	}
 
-	stateDir := os.Getenv("NOUS_GUEST_RUNNERD_STATE_DIR")
+	stateDir := strings.TrimSpace(os.Getenv("AGENT_RUNNER_GUEST_RUNNERD_STATE_DIR"))
 	if stateDir == "" {
-		stateDir = "/var/lib/nous-guest-runnerd"
+		stateDir = "/var/lib/guest-runnerd"
 	}
 
 	s, err := NewServer(Config{
@@ -48,7 +49,7 @@ func Run(ctx context.Context) error {
 		<-ctx.Done()
 		_ = srv.Close()
 	}()
-	log.Printf("nous-guest-runnerd listening on http://%s", addr)
+	log.Printf("guest-runnerd listening on http://%s", addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
 	}

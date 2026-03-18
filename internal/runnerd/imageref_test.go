@@ -9,10 +9,10 @@ func TestNormalizeImageRef(t *testing.T) {
 	if got := normalizeImageRef("local/x:1"); got != "local/x:1" {
 		t.Fatalf("got %q", got)
 	}
-	if got := normalizeImageRef("gravtice/nous-claude-agent-service:0.1.0"); got != "docker.io/gravtice/nous-claude-agent-service:0.1.0" {
+	if got := normalizeImageRef("gravtice/agent-runner-claude-agent-service:0.1.0"); got != "docker.io/gravtice/agent-runner-claude-agent-service:0.1.0" {
 		t.Fatalf("got %q", got)
 	}
-	if got := normalizeImageRef("docker.io/gravtice/nous-claude-agent-service:0.1.0"); got != "docker.io/gravtice/nous-claude-agent-service:0.1.0" {
+	if got := normalizeImageRef("docker.io/gravtice/agent-runner-claude-agent-service:0.1.0"); got != "docker.io/gravtice/agent-runner-claude-agent-service:0.1.0" {
 		t.Fatalf("got %q", got)
 	}
 	if got := normalizeImageRef("ghcr.io/x/y:1"); got != "ghcr.io/x/y:1" {

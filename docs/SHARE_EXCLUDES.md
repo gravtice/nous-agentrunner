@@ -116,10 +116,10 @@
 方案（KISS）：
 
 1. 创建一个 deny 源目录（VM 本地，不依赖 Host）：
-   - 例：`/run/nous-deny/dir`
+   - 例：`/run/agent-runner-deny/dir`
    - 权限设为 `000`
 2. 对每个 exclude `p`（Guest 内同路径）做覆盖挂载：
-   - `mount --bind /run/nous-deny/dir <p>`
+   - `mount --bind /run/agent-runner-deny/dir <p>`
 
 若 `<p>` 不存在：
 
@@ -133,7 +133,7 @@
 方案：
 
 - 在容器启动 mounts 列表的最后，追加每个 exclude 的覆盖挂载：
-  - `type=bind,src=/run/nous-deny/dir,dst=<exclude>,ro`
+  - `type=bind,src=/run/agent-runner-deny/dir,dst=<exclude>,ro`
 
 挂载顺序要求：
 

@@ -1,4 +1,4 @@
-module github.com/gravtice/nous-agent-runner
+module github.com/gravtice/agent-runner
 
 go 1.22
 

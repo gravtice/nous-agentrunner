@@ -12,7 +12,7 @@ func TestSystemStatus_IncludesProtocolsAndCapabilities(t *testing.T) {
 		cfg: Config{
 			Token:            "tok",
 			LimaHome:         t.TempDir(),
-			LimaInstanceName: "nous-test",
+			LimaInstanceName: "agent-test",
 			MaxInlineBytes:   8 * 1024 * 1024,
 		},
 		services: make(map[string]Service),

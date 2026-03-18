@@ -61,7 +61,7 @@ func TestM5_ServicesSnapshot_RejectsNonLocalTag(t *testing.T) {
 	s := &Server{cfg: Config{Token: "tok"}, services: make(map[string]Service)}
 	h := s.Handler()
 
-	reqBody := []byte(`{"new_tag":"registry.nous.ai/whatever:1"}`)
+	reqBody := []byte(`{"new_tag":"docker.io/gravtice/whatever:1"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/services/svc_x/snapshot", bytes.NewReader(reqBody))
 	req.Header.Set("Authorization", "Bearer tok")
 	rec := httptest.NewRecorder()
@@ -144,14 +144,14 @@ func TestM5_ImagesDelete_RejectsImageInUse(t *testing.T) {
 			"svc_x": {
 				ServiceID: "svc_x",
 				Type:      "claude",
-				ImageRef:  "docker.io/gravtice/nous-claude-agent-service:0.2.11",
+				ImageRef:  "docker.io/gravtice/agent-runner-claude-agent-service:0.2.11",
 				State:     "running",
 			},
 		},
 	}
 	h := s.Handler()
 
-	reqBody := []byte(`{"ref":"docker.io/gravtice/nous-claude-agent-service:0.2.11"}`)
+	reqBody := []byte(`{"ref":"docker.io/gravtice/agent-runner-claude-agent-service:0.2.11"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/delete", bytes.NewReader(reqBody))
 	req.Header.Set("Authorization", "Bearer tok")
 	rec := httptest.NewRecorder()

@@ -1,8 +1,8 @@
-# Nous Agent Runner TypeScript SDK 设计与实现计划（v0.2.4）
+# Agent Runner TypeScript SDK 设计与实现计划（v0.2.4）
 
 ## 0. 文档目的
 
-在现有 Swift SDK（`sdk/swift/NousAgentRunnerKit`）基础上，制定一个 **KISS、可维护、与 ASMP/ASP 协议对齐** 的 TypeScript SDK 开发方案，用于 Node/Electron 集成 Nous Agent Runner。
+在现有 Swift SDK（`sdk/swift/AgentRunnerKit`）基础上，制定一个 **KISS、可维护、与 ASMP/ASP 协议对齐** 的 TypeScript SDK 开发方案，用于 Node/Electron 集成 Agent Runner。
 
 本计划关注：
 
@@ -30,7 +30,7 @@
 
 ## 2. 范围与版本对齐
 
-- 产品版本：`NOUS_AGENT_RUNNER_VERSION=0.2.4`（该文档对应版本）。
+- 产品版本：`AGENT_RUNNER_VERSION=0.2.4`（该文档对应版本）。
 - 协议版本：以 Runner `GET /v1/system/status` 返回为准（ASMP/ASP v0.2.0 + ASMP v0.3.0 skills 能力等）。
 - 兼容性策略：
   - SDK 默认 **忽略响应中的未知字段**（前向兼容）。
@@ -43,7 +43,7 @@
 新增目录：
 
 ```
-sdk/typescript/nous-agent-runner-sdk/
+sdk/typescript/agent-runner-sdk/
 ├── package.json
 ├── tsconfig.json
 ├── src/
@@ -56,21 +56,21 @@ sdk/typescript/nous-agent-runner-sdk/
 └── test/                   # node:test / 最小 mock server
 ```
 
-发布包名：`nous-agent-runner-sdk`。
+发布包名：`agent-runner-sdk`。
 
 ### 3.2 核心类型与类（建议与 Swift 命名对齐）
 
-**NousAgentRunnerContext**
+**AgentRunnerContext**
 
 - 字段：`baseURL: URL`, `token: string`, `instanceId: string`
 - 静态方法：
-  - `discover(): Promise<NousAgentRunnerContext>`（默认按 App Bundle ID 派生 instance id；与 Swift/runnerd 一致）
+  - `discover(): Promise<AgentRunnerContext>`（默认按 App Bundle ID 派生 instance id；与 Swift/runnerd 一致）
   - `discover({ instanceId }: { instanceId: string }): Promise<...>`（可选逃生口；一般不建议上层乱用）
   - `deriveInstanceIdFromBundleId(bundleId: string): string`（与 Swift 一致：sha256 + 前 12 位 hex）
 
-**NousAgentRunnerClient**
+**AgentRunnerClient**
 
-- `constructor(runnerContext: NousAgentRunnerContext, opts?: { fetch?: typeof fetch })`
+- `constructor(runnerContext: AgentRunnerContext, opts?: { fetch?: typeof fetch })`
 - 统一内部：`requestJSON(method, path, body, timeoutMs)`
 - 方法集合（按 Swift SDK 覆盖）：
   - System：
@@ -107,9 +107,9 @@ sdk/typescript/nous-agent-runner-sdk/
   - ASP（WebSocket）：
     - `openChatWebSocket(serviceId: string)`（返回 ws 连接；见 5.2）
 
-**NousAgentRunnerDaemon（可选，后置阶段）**
+**AgentRunnerDaemon（可选，后置阶段）**
 
-- 目标：在 Electron/Node 应用中按需拉起 `nous-agent-runnerd`，并等待其就绪。
+- 目标：在 Electron/Node 应用中按需拉起 `agent-runnerd`，并等待其就绪。
 - `ensureRunning()` 逻辑与 Swift 一致：先 discover + status 探测，失败后 spawn runnerd 并轮询。
 
 ### 3.3 类型策略（KISS）
@@ -124,7 +124,7 @@ sdk/typescript/nous-agent-runner-sdk/
 
 零参数默认值必须稳定且与 runnerd 一致，避免同机多 App 冲突。规则（按优先级）：
 
-1. 若能在可执行文件附近找到 `NousAgentRunnerConfig.json` 且包含合法 `instance_id`：使用该值。
+1. 若能在可执行文件附近找到 `AgentRunnerConfig.json` 且包含合法 `instance_id`：使用该值。
 2. 否则（macOS）：尝试从 App 的 `Info.plist` 读取 `CFBundleIdentifier`，并按 `sha256(bundleId)` 取前 12 位 hex 派生 `instance_id`。
 3. 兜底：`"default"`（例如非 `.app` 运行环境或无法读取 bundle id）。
 
@@ -132,7 +132,7 @@ sdk/typescript/nous-agent-runner-sdk/
 
 与现有实现一致：
 
-- `~/Library/Application Support/NousAgentRunner/<instance_id>/`
+- `~/Library/Application Support/AgentRunner/<instance_id>/`
   - `runtime.json`：优先读取 `listen_addr/listen_port`
   - `token`：Bearer token（0600）
   - `.env.*`：作为端口兜底（按优先级）
@@ -140,7 +140,7 @@ sdk/typescript/nous-agent-runner-sdk/
 ### 4.2 端口发现优先级（必须一致）
 
 1. `runtime.json.listen_port`（若存在且合法）
-2. 依次读取 `.env.local/.env.production/.env.development/.env.test` 的 `NOUS_AGENT_RUNNER_PORT`
+2. 依次读取 `.env.local/.env.production/.env.development/.env.test` 的 `AGENT_RUNNER_PORT`
 
 ### 4.3 输入校验
 
@@ -193,11 +193,11 @@ sdk/typescript/nous-agent-runner-sdk/
 ### Stage 1：基础 SDK（ASMP + runner context discovery）
 
 - 交付：
-  - `NousAgentRunnerContext.discover()`
-  - `NousAgentRunnerClient` 覆盖除 WS 之外的 Swift SDK 方法
+  - `AgentRunnerContext.discover()`
+  - `AgentRunnerClient` 覆盖除 WS 之外的 Swift SDK 方法
   - 最小单元测试与 mock HTTP 测试
 - 验收：
-  - 能在本机连上 `nous-agent-runnerd` 并成功 `GET /v1/system/status`
+  - 能在本机连上 `agent-runnerd` 并成功 `GET /v1/system/status`
   - 端口发现优先级正确
   - 错误信息可读（status + body）
 
@@ -212,7 +212,7 @@ sdk/typescript/nous-agent-runner-sdk/
 ### Stage 3：Daemon 管理（可选）
 
 - 交付：
-  - `NousAgentRunnerDaemon.ensureRunning()`：支持传入 runnerd 可执行文件路径
+  - `AgentRunnerDaemon.ensureRunning()`：支持传入 runnerd 可执行文件路径
   - 等待就绪超时与错误可诊断
 - 验收：
   - runner 未启动时 SDK 可拉起并连接成功
@@ -222,7 +222,7 @@ sdk/typescript/nous-agent-runner-sdk/
 
 - 交付：
   - README 增加 Node/Electron 使用示例
-  - npm 发布流程（版本对齐 `NOUS_AGENT_RUNNER_VERSION`）
+  - npm 发布流程（版本对齐 `AGENT_RUNNER_VERSION`）
 - 验收：
   - `npm pack` 产物可用，`dist/` 内容正确
 
@@ -230,7 +230,7 @@ sdk/typescript/nous-agent-runner-sdk/
 
 已确认决策：
 
-- npm 包名：`nous-agent-runner-sdk`
+- npm 包名：`agent-runner-sdk`
 - WebSocket：SDK **直接依赖** `ws`
 - `instance_id`：默认按 `CFBundleIdentifier` 派生（与 Swift/runnerd 一致）
 

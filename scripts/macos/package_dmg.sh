@@ -22,10 +22,10 @@ Usage: $(basename "$0") <app_path>
   - a SwiftPM package directory (contains Package.swift); script will create a minimal .app wrapper
 
 Env:
-  NOUS_CODESIGN_IDENTITY   codesign identity (disables auto-detect)
-  NOUS_DISABLE_CODESIGN=1  skip codesign
+  AGENT_RUNNER_CODESIGN_IDENTITY   codesign identity (disables auto-detect)
+  AGENT_RUNNER_DISABLE_CODESIGN=1  skip codesign
 
-Auto-detect order (when NOUS_CODESIGN_IDENTITY is unset):
+Auto-detect order (when AGENT_RUNNER_CODESIGN_IDENTITY is unset):
   1) Developer ID Application (notarizable)
   2) Apple Development (Personal Team)
   3) ad-hoc ("-")
@@ -57,7 +57,7 @@ read_runner_version() {
   local version_file="${ROOT_DIR}/VERSION"
   local v="0.1.0"
   if [ -f "${version_file}" ]; then
-    v="$(awk -F= '$1=="NOUS_AGENT_RUNNER_VERSION"{print $2; exit}' "${version_file}" | tr -d ' \t\r\"')"
+    v="$(awk -F= '$1=="AGENT_RUNNER_VERSION"{print $2; exit}' "${version_file}" | tr -d ' \t\r\"')"
   fi
   if [ -z "${v}" ]; then
     v="0.1.0"
@@ -67,7 +67,7 @@ read_runner_version() {
 
 maybe_codesign_adhoc() {
   local app="$1"
-  if [ "${NOUS_DISABLE_CODESIGN:-}" = "1" ]; then
+  if [ "${AGENT_RUNNER_DISABLE_CODESIGN:-}" = "1" ]; then
     return 0
   fi
   if ! command -v codesign >/dev/null 2>&1; then
@@ -76,8 +76,8 @@ maybe_codesign_adhoc() {
 
   local identity=""
   local mode=""
-  if [ -n "${NOUS_CODESIGN_IDENTITY:-}" ]; then
-    identity="${NOUS_CODESIGN_IDENTITY}"
+  if [ -n "${AGENT_RUNNER_CODESIGN_IDENTITY:-}" ]; then
+    identity="${AGENT_RUNNER_CODESIGN_IDENTITY}"
     mode="explicit"
   elif command -v security >/dev/null 2>&1; then
     identity="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Developer ID Application:/{print $2; exit}')"
@@ -112,7 +112,7 @@ maybe_codesign_adhoc() {
 
   # Sign injected helper executables (avoid --deep; SwiftPM resource bundles may be minimal dirs).
   local res_dir="${app}/Contents/Resources"
-  for f in nous-agent-runnerd nous-guest-runnerd; do
+  for f in agent-runnerd guest-runnerd; do
     if [ -f "${res_dir}/${f}" ]; then
       codesign "${exec_flags[@]}" "${res_dir}/${f}" || fail "codesign failed: ${res_dir}/${f}"
     fi
@@ -133,17 +133,23 @@ maybe_codesign_adhoc() {
 build_runtime_binaries_if_needed() {
   ensure_dir "$DIST_DIR"
 
-  if [ "${NOUS_SKIP_BUILD:-}" = "1" ]; then
-    for f in nous-agent-runnerd nous-guest-runnerd limactl; do
+  if [ "${AGENT_RUNNER_SKIP_BUILD:-}" = "1" ]; then
+    if [ ! -f "${DIST_DIR}/agent-runnerd" ]; then
+      fail "AGENT_RUNNER_SKIP_BUILD=1 but missing: ${DIST_DIR}/agent-runnerd"
+    fi
+    if [ ! -f "${DIST_DIR}/guest-runnerd" ]; then
+      fail "AGENT_RUNNER_SKIP_BUILD=1 but missing: ${DIST_DIR}/guest-runnerd"
+    fi
+    for f in limactl; do
       if [ ! -f "${DIST_DIR}/${f}" ]; then
-        fail "NOUS_SKIP_BUILD=1 but missing: ${DIST_DIR}/${f}"
+        fail "AGENT_RUNNER_SKIP_BUILD=1 but missing: ${DIST_DIR}/${f}"
       fi
     done
     if [ ! -f "${DIST_DIR}/lima-guestagent.Linux-aarch64" ]; then
-      fail "NOUS_SKIP_BUILD=1 but missing: ${DIST_DIR}/lima-guestagent.Linux-aarch64"
+      fail "AGENT_RUNNER_SKIP_BUILD=1 but missing: ${DIST_DIR}/lima-guestagent.Linux-aarch64"
     fi
     if [ ! -f "${DIST_DIR}/lima-templates/default.yaml" ]; then
-      fail "NOUS_SKIP_BUILD=1 but missing: ${DIST_DIR}/lima-templates/default.yaml"
+      fail "AGENT_RUNNER_SKIP_BUILD=1 but missing: ${DIST_DIR}/lima-templates/default.yaml"
     fi
     return 0
   fi
@@ -154,11 +160,15 @@ build_runtime_binaries_if_needed() {
   fi
 
   # No Go toolchain; fall back to prebuilt binaries in dist/.
-  for f in nous-agent-runnerd nous-guest-runnerd limactl; do
-    if [ ! -f "${DIST_DIR}/${f}" ]; then
-      fail "go not found in PATH and missing prebuilt binary: ${DIST_DIR}/${f}"
-    fi
-  done
+  if [ ! -f "${DIST_DIR}/agent-runnerd" ]; then
+    fail "go not found in PATH and missing prebuilt binary: ${DIST_DIR}/agent-runnerd"
+  fi
+  if [ ! -f "${DIST_DIR}/guest-runnerd" ]; then
+    fail "go not found in PATH and missing prebuilt binary: ${DIST_DIR}/guest-runnerd"
+  fi
+  if [ ! -f "${DIST_DIR}/limactl" ]; then
+    fail "go not found in PATH and missing prebuilt binary: ${DIST_DIR}/limactl"
+  fi
   if [ ! -f "${DIST_DIR}/lima-guestagent.Linux-aarch64" ]; then
     fail "go not found in PATH and missing: ${DIST_DIR}/lima-guestagent.Linux-aarch64"
   fi
@@ -189,16 +199,16 @@ create_minimal_app_from_swiftpm() {
   require_cmd file
 
   local tmp_root
-  tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/nous-app.XXXXXX")"
+  tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/agent-runner-app.XXXXXX")"
   SPM_TMP_ROOT="$tmp_root"
   local build_path="${tmp_root}/spm-build"
 
-  local nous_version="0.1.0"
+  local agent_runner_version="0.1.0"
   local version_file="${ROOT_DIR}/VERSION"
   if [ -f "${version_file}" ]; then
-    nous_version="$(awk -F= '$1=="NOUS_AGENT_RUNNER_VERSION"{print $2; exit}' "${version_file}" | tr -d ' \t\r\"')"
-    if [ -z "${nous_version}" ]; then
-      nous_version="0.1.0"
+    agent_runner_version="$(awk -F= '$1=="AGENT_RUNNER_VERSION"{print $2; exit}' "${version_file}" | tr -d ' \t\r\"')"
+    if [ -z "${agent_runner_version}" ]; then
+      agent_runner_version="0.1.0"
     fi
   fi
 
@@ -242,15 +252,15 @@ create_minimal_app_from_swiftpm() {
   <key>CFBundleDisplayName</key>
   <string>${exe_name}</string>
   <key>CFBundleIdentifier</key>
-  <string>ai.nous.${exe_name}</string>
+  <string>ai.gravtice.${exe_name}</string>
   <key>CFBundleExecutable</key>
   <string>${exe_name}</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>${nous_version}</string>
+  <string>${agent_runner_version}</string>
   <key>CFBundleVersion</key>
-  <string>${nous_version}</string>
+  <string>${agent_runner_version}</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
 </dict>
@@ -265,11 +275,11 @@ EOF
     ditto "$bundle_dir" "${app_dir}/Contents/Resources/$(basename "$bundle_dir")"
   done < <(find "$bin_dir" -maxdepth 1 -type d -name "*.bundle" -print)
 
-  # Also copy NousAgentRunnerConfig.json into the main app resources if provided at the package root.
+  # Also copy AgentRunnerConfig.json into the main app resources if provided at the package root.
   # Avoid scanning the whole package directory (e.g. .build artifacts may contain stale copies).
-  local cfg_path="${pkg_dir}/NousAgentRunnerConfig.json"
+  local cfg_path="${pkg_dir}/AgentRunnerConfig.json"
   if [ -f "$cfg_path" ]; then
-    ditto "$cfg_path" "${app_dir}/Contents/Resources/NousAgentRunnerConfig.json"
+    ditto "$cfg_path" "${app_dir}/Contents/Resources/AgentRunnerConfig.json"
   fi
 
   echo "$app_dir"
@@ -280,8 +290,8 @@ inject_runtime_into_app() {
   local res_dir="${app}/Contents/Resources"
   ensure_dir "$res_dir"
 
-  copy_exec "${DIST_DIR}/nous-agent-runnerd" "${res_dir}/nous-agent-runnerd"
-  copy_exec "${DIST_DIR}/nous-guest-runnerd" "${res_dir}/nous-guest-runnerd"
+  copy_exec "${DIST_DIR}/agent-runnerd" "${res_dir}/agent-runnerd"
+  copy_exec "${DIST_DIR}/guest-runnerd" "${res_dir}/guest-runnerd"
   copy_exec "${DIST_DIR}/limactl" "${res_dir}/limactl"
   local share_dir="${app}/Contents/share/lima"
   ensure_dir "$share_dir"
@@ -294,37 +304,37 @@ inject_runtime_into_app() {
 
   local runner_version
   runner_version="$(read_runner_version)"
-  local default_image="docker.io/gravtice/nous-claude-agent-service:${runner_version}"
+  local default_image="docker.io/gravtice/agent-runner-claude-agent-service:${runner_version}"
 
   # Optional: bundle offline assets to avoid first-run downloads.
   # See: scripts/macos/fetch_offline_assets.sh
   local offline_dir=""
   local offline_manifest=""
   if [ -d "${DIST_DIR}/offline-assets" ]; then
-    offline_dir="nous-offline-assets"
+    offline_dir="agent-runner-offline-assets"
     offline_manifest="${DIST_DIR}/offline-assets/manifest.json"
     if [ ! -f "${offline_manifest}" ]; then
       fail "offline-assets present but missing manifest.json: ${DIST_DIR}/offline-assets"
     fi
-    rm -rf "${res_dir}/nous-offline-assets"
-    ditto "${DIST_DIR}/offline-assets" "${res_dir}/nous-offline-assets"
-    rm -f "${res_dir}/nous-offline-assets/manifest.json"
+    rm -rf "${res_dir}/agent-runner-offline-assets"
+    ditto "${DIST_DIR}/offline-assets" "${res_dir}/agent-runner-offline-assets"
+    rm -f "${res_dir}/agent-runner-offline-assets/manifest.json"
   fi
 
   # Single source of truth: runtime-manifest.json (no extra manifests in the app bundle).
   require_cmd python3
-  NOUS_AGENT_RUNNER_VERSION="${runner_version}" \
-    NOUS_DEFAULT_IMAGE_REF="${default_image}" \
-    NOUS_OFFLINE_ASSETS_DIR="${offline_dir}" \
-    NOUS_OFFLINE_ASSETS_MANIFEST="${offline_manifest}" \
+  AGENT_RUNNER_VERSION="${runner_version}" \
+    AGENT_RUNNER_DEFAULT_IMAGE_REF="${default_image}" \
+    AGENT_RUNNER_OFFLINE_ASSETS_DIR="${offline_dir}" \
+    AGENT_RUNNER_OFFLINE_ASSETS_MANIFEST="${offline_manifest}" \
     python3 - <<PY >"${res_dir}/runtime-manifest.json"
 import json
 import os
 
-runner_version = os.environ["NOUS_AGENT_RUNNER_VERSION"]
-default_image = os.environ["NOUS_DEFAULT_IMAGE_REF"]
-offline_dir = os.environ.get("NOUS_OFFLINE_ASSETS_DIR", "").strip()
-offline_manifest = os.environ.get("NOUS_OFFLINE_ASSETS_MANIFEST", "").strip()
+runner_version = os.environ["AGENT_RUNNER_VERSION"]
+default_image = os.environ["AGENT_RUNNER_DEFAULT_IMAGE_REF"]
+offline_dir = os.environ.get("AGENT_RUNNER_OFFLINE_ASSETS_DIR", "").strip()
+offline_manifest = os.environ.get("AGENT_RUNNER_OFFLINE_ASSETS_MANIFEST", "").strip()
 
 m = {
     "schema_version": 1,
@@ -386,7 +396,7 @@ main() {
   app_name="$(basename "$app_src")"
   local app_base="${app_name%.app}"
 
-  STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/nous-dmg.XXXXXX")"
+  STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/agent-runner-dmg.XXXXXX")"
   trap 'rm -rf "${STAGE_DIR}"; rm -rf "${SPM_TMP_ROOT}"' EXIT
 
   local dst_app="${STAGE_DIR}/${app_name}"

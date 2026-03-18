@@ -73,7 +73,7 @@ func TestM1_BuildLimaYAML_IncludesOfflineAssets(t *testing.T) {
 }
 
 func TestM1_LimaInstanceState_NotCreatedWithoutDir(t *testing.T) {
-	s := &Server{cfg: Config{LimaHome: t.TempDir(), LimaInstanceName: "nous-test"}}
+	s := &Server{cfg: Config{LimaHome: t.TempDir(), LimaInstanceName: "agent-test"}}
 	state, err := s.limaInstanceState(context.Background())
 	if err != nil {
 		t.Fatalf("limaInstanceState: %v", err)
@@ -84,8 +84,8 @@ func TestM1_LimaInstanceState_NotCreatedWithoutDir(t *testing.T) {
 }
 
 func TestM1_LimaInstanceStateFromListOutput_Object(t *testing.T) {
-	out := []byte(`{"name":"nous-demo","status":"Running","sshConfigFile":"/tmp/ssh.config"}` + "\n")
-	state, err := limaInstanceStateFromListOutput(out, "nous-demo")
+	out := []byte(`{"name":"agent-demo","status":"Running","sshConfigFile":"/tmp/ssh.config"}` + "\n")
+	state, err := limaInstanceStateFromListOutput(out, "agent-demo")
 	if err != nil {
 		t.Fatalf("limaInstanceStateFromListOutput: %v", err)
 	}
@@ -95,8 +95,8 @@ func TestM1_LimaInstanceStateFromListOutput_Object(t *testing.T) {
 }
 
 func TestM1_LimaInstanceStateFromListOutput_Array(t *testing.T) {
-	out := []byte(`[{"name":"nous-demo","status":"Stopped"}]`)
-	state, err := limaInstanceStateFromListOutput(out, "nous-demo")
+	out := []byte(`[{"name":"agent-demo","status":"Stopped"}]`)
+	state, err := limaInstanceStateFromListOutput(out, "agent-demo")
 	if err != nil {
 		t.Fatalf("limaInstanceStateFromListOutput: %v", err)
 	}

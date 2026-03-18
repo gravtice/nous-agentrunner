@@ -11,11 +11,11 @@ func TestReadSkillMDMeta_YAMLFoldedDescription(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "SKILL.md")
 	content := `---
-name: nous-genai-skill
+name: gravtice-genai-skill
 description: >
-  Use nous-genai as an end user (not a contributor): run ` + "`genai`" + ` CLI for text/image/audio/video/embedding
+  Use gravtice-genai as an end user (not a contributor): run ` + "`genai`" + ` CLI for text/image/audio/video/embedding
   across providers (OpenAI/Gemini/Claude/DashScope/Doubao/Tuzi).
-  中文: 用 nous-genai 调用多家大模型 + 启动 MCP 服务 + 排错。
+  中文: 用 gravtice-genai 调用多家大模型 + 启动 MCP 服务 + 排错。
 ---
 `
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
@@ -23,16 +23,16 @@ description: >
 	}
 
 	meta := readSkillMDMeta(path)
-	if meta.Name != "nous-genai-skill" {
+	if meta.Name != "gravtice-genai-skill" {
 		t.Fatalf("name=%q", meta.Name)
 	}
 	if strings.TrimSpace(meta.Description) == ">" {
 		t.Fatalf("description parsed as scalar marker only: %q", meta.Description)
 	}
-	if !strings.Contains(meta.Description, "Use nous-genai as an end user") {
+	if !strings.Contains(meta.Description, "Use gravtice-genai as an end user") {
 		t.Fatalf("missing english description: %q", meta.Description)
 	}
-	if !strings.Contains(meta.Description, "中文: 用 nous-genai 调用多家大模型") {
+	if !strings.Contains(meta.Description, "中文: 用 gravtice-genai 调用多家大模型") {
 		t.Fatalf("missing chinese description: %q", meta.Description)
 	}
 }
