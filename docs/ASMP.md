@@ -56,7 +56,7 @@ Runner 支持 `instance_id` 隔离不同集成方的数据目录。
 
 以 macOS 为例（当前产品目标平台）：
 
-- AppSupport：`~/Library/Application Support/AgentRunner/<instance_id>/`
+- Config：`~/.agentrunner/<instance_id>/`
 - 端口：
   - 优先读取：`runtime.json` 的 `listen_port`
   - 其次按优先级读取：`.env.local > .env.production > .env.development > .env.test` 中的 `AGENT_RUNNER_PORT`
@@ -111,7 +111,7 @@ TypeScript 集成可参考：`sdk/typescript/agent-runner-sdk/src/context.ts`
     "backend": "lima",
     "guest_runnerd_port": 17777,
     "lima_instance_name": "agent-default",
-    "lima_home_directory": "/Users/alice/Library/Caches/AgentRunner/lima"
+    "lima_home_directory": "/Users/alice/.agentrunner/caches/lima"
   },
   "services_running": 1
 }
@@ -163,7 +163,7 @@ TypeScript 集成可参考：`sdk/typescript/agent-runner-sdk/src/context.ts`
 {
   "shares": [
     {"share_id":"shr_...","host_path":"/Users"},
-    {"share_id":"shr_...","host_path":"/Users/alice/Library/Caches/AgentRunner/default/SharedTmp"}
+    {"share_id":"shr_...","host_path":"/Users/alice/.agentrunner/caches/default/SharedTmp"}
   ],
   "excludes": ["/Users/alice/.claude","/Users/alice/.codex"]
 }
@@ -266,7 +266,7 @@ TypeScript 集成可参考：`sdk/typescript/agent-runner-sdk/src/context.ts`
 请求：
 
 ```json
-{"path":"/Users/alice/Library/Caches/AgentRunner/default/SharedTmp/image.tar"}
+{"path":"/Users/alice/.agentrunner/caches/default/SharedTmp/image.tar"}
 ```
 
 约束：
@@ -777,7 +777,7 @@ Runner 支持以下常见输入：
 
 #### 安装落盘位置
 
-- macOS：`~/Library/Application Support/AgentRunner/<instance_id>/skills/<skill_name>/`
+- 本机：`~/.agentrunner/<instance_id>/skills/<skill_name>/`
 - Runner 会在安装目录内写入 `.agent-runner-source.json`，用于记录来源信息与后续管理。
 
 ---

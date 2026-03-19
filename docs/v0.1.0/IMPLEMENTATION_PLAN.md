@@ -139,7 +139,7 @@ Service 创建时可声明 `rw_mounts[]`（目录列表）：
 由于 v1 要求大文件必须通过 `path` 输入，且 `path` 必须在白名单目录内，Runner 需要提供一个默认临时目录（加入 Share 白名单），供 SDK/应用落盘；如需让某个 service 写入，该目录（或其子路径）应加入该 service 的 `rw_mounts`：
 
 - 默认临时目录（默认加入 Share 白名单）：
-  - `~/Library/Caches/AgentRunner/<instance_id>/SharedTmp`
+  - `~/.agentrunner/caches/<instance_id>/SharedTmp`
 
 SDK 提供获取该路径的 API（或 ASMP 提供 `GET /v1/system/paths`）。
 
@@ -171,10 +171,10 @@ SDK 提供获取该路径的 API（或 ASMP 提供 `GET /v1/system/paths`）。
   - 对外提供 ASP 接口（v1 暂定 WebSocket）。
   - 对内通过 Lima `portForwards`（gRPC tunnel / vsock）与 Guest 交互，并把流式响应转发给客户端。
 - 鉴权：
-  - 本机 token（Bearer），v1 实现落盘到 `~/Library/Application Support/AgentRunner/<instance_id>/token`（Keychain 作为后续增强）。
+  - 本机 token（Bearer），v1 实现落盘到 `~/.agentrunner/<instance_id>/token`（Keychain 作为后续增强）。
   - 仅本机调用，不做复杂身份绑定。
 - 状态持久化（不依赖命令行参数）：
-  - `~/Library/Application Support/AgentRunner/<instance_id>/...`
+  - `~/.agentrunner/<instance_id>/...`
 
 ### 7.2 `guest-runnerd`（Guest daemon）
 
@@ -214,10 +214,10 @@ SDK 提供获取该路径的 API（或 ASMP 提供 `GET /v1/system/paths`）。
 
 ### 8.2 Runner Home 目录
 
-- Application Support（状态/配置）：
-  - `~/Library/Application Support/AgentRunner/<instance_id>/`
-- Caches（临时文件/落盘大文件）：
-  - `~/Library/Caches/AgentRunner/<instance_id>/`
+- 配置/状态：
+  - `~/.agentrunner/<instance_id>/`
+- 缓存（临时文件/落盘大文件）：
+  - `~/.agentrunner/caches/<instance_id>/`
 
 ### 8.3 配置文件优先级（零参数）
 
@@ -227,7 +227,7 @@ Runner 读取配置时遵循优先级：
 
 文件位于：
 
-`~/Library/Application Support/AgentRunner/<instance_id>/.env.*`
+`~/.agentrunner/<instance_id>/.env.*`
 
 v1 关键配置项（示例）：
 
@@ -284,7 +284,7 @@ v1 关键配置项（示例）：
 
 ```json
 {
-  "default_temp_dir": "/Users/alice/Library/Caches/AgentRunner/demo/SharedTmp"
+  "default_temp_dir": "/Users/alice/.agentrunner/caches/demo/SharedTmp"
 }
 ```
 
@@ -680,7 +680,7 @@ App 启动后由 SDK/集成代码负责：
 落地方式：
 
 1. `agent-runnerd` 打包 `limactl`（放在 App bundle 内），运行时设置私有 `LIMA_HOME`：  
-   `~/Library/Caches/AgentRunner/lima/`（避免 UNIX socket 路径过长；不同实例由 `agent-<instance_id>` 子目录隔离）。
+   `~/.agentrunner/caches/lima/`（避免 UNIX socket 路径过长；不同实例由 `agent-<instance_id>` 子目录隔离）。
 2. Runner 生成并管理 lima instance（建议固定 name：`agent-<instance_id>`），自动生成 lima YAML：  
    - `vmType: vz`（Apple Virtualization）  
    - `mountType: virtiofs`  

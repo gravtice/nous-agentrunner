@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 )
 
 type Paths struct {
@@ -23,36 +22,16 @@ func Resolve(instanceID string) (Paths, error) {
 	if err != nil {
 		return Paths{}, err
 	}
-
-	switch runtime.GOOS {
-	case "darwin":
-		return resolveNamedPaths(
-			home,
-			instanceID,
-			filepath.Join("Library", "Application Support"),
-			filepath.Join("Library", "Logs"),
-			filepath.Join("Library", "Caches"),
-		), nil
-	default:
-		// Dev-friendly fallback (not a product target).
-		return resolveNamedPaths(
-			home,
-			instanceID,
-			filepath.Join(".local", "share"),
-			filepath.Join(".local", "share"),
-			filepath.Join(".cache"),
-		), nil
-	}
+	return buildPaths(home, instanceID), nil
 }
 
-func resolveNamedPaths(home, instanceID, appSupportBase, logsBase, cachesBase string) Paths {
-	return buildPaths(home, appSupportBase, logsBase, cachesBase, "AgentRunner", instanceID)
-}
-
-func buildPaths(home, appSupportBase, logsBase, cachesBase, appName, instanceID string) Paths {
-	appSupport := filepath.Join(home, appSupportBase, appName, instanceID)
-	logs := filepath.Join(home, logsBase, appName, instanceID)
-	caches := filepath.Join(home, cachesBase, appName, instanceID)
+func buildPaths(home, instanceID string) Paths {
+	root := filepath.Join(home, ".agentrunner")
+	cachesRoot := filepath.Join(root, "caches")
+	logsRoot := filepath.Join(root, "logs")
+	appSupport := filepath.Join(root, instanceID)
+	caches := filepath.Join(cachesRoot, instanceID)
+	logs := filepath.Join(logsRoot, instanceID)
 	return Paths{
 		InstanceID:          instanceID,
 		AppSupportDir:       appSupport,

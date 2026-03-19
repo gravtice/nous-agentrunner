@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { AgentRunnerError } from "./errors";
 
 const execFileAsync = promisify(execFile);
-const APP_SUPPORT_DIRNAME = "AgentRunner";
+const AGENT_RUNNER_ROOT_DIRNAME = ".agentrunner";
 const CONFIG_BASENAMES = ["AgentRunnerConfig.json"];
 const PORT_ENV_KEYS = ["AGENT_RUNNER_PORT"];
 
@@ -86,13 +86,7 @@ export function parseEnv(content: string): Record<string, string> {
 
 export function resolveAppSupportDir(instanceId: string): string {
   const home = resolveHomeDir();
-  return path.join(
-    home,
-    "Library",
-    "Application Support",
-    APP_SUPPORT_DIRNAME,
-    instanceId,
-  );
+  return path.join(home, AGENT_RUNNER_ROOT_DIRNAME, instanceId);
 }
 
 export async function discoverInstanceId(): Promise<string> {
@@ -209,7 +203,6 @@ function resolveHomeDir(): string {
 async function loadPort(appSupportDir: string): Promise<number> {
   const runtimePort = await loadPortFromRuntimeJSON(appSupportDir);
   if (runtimePort) return runtimePort;
-
   const candidates = [
     ".env.local",
     ".env.production",

@@ -40,7 +40,7 @@ test("resolveAppSupportDir uses HOME", () => {
   try {
     assert.equal(
       resolveAppSupportDir("inst"),
-      "/tmp/home/Library/Application Support/AgentRunner/inst",
+      "/tmp/home/.agentrunner/inst",
     );
   } finally {
     process.env.HOME = prevHome;

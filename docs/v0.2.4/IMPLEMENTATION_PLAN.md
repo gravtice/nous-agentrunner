@@ -128,11 +128,11 @@ sdk/typescript/agent-runner-sdk/
 2. 否则（macOS）：尝试从 App 的 `Info.plist` 读取 `CFBundleIdentifier`，并按 `sha256(bundleId)` 取前 12 位 hex 派生 `instance_id`。
 3. 兜底：`"default"`（例如非 `.app` 运行环境或无法读取 bundle id）。
 
-### 4.1 App Support 路径（macOS）
+### 4.1 Config 路径
 
 与现有实现一致：
 
-- `~/Library/Application Support/AgentRunner/<instance_id>/`
+- `~/.agentrunner/<instance_id>/`
   - `runtime.json`：优先读取 `listen_addr/listen_port`
   - `token`：Bearer token（0600）
   - `.env.*`：作为端口兜底（按优先级）

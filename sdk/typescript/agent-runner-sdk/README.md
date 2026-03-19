@@ -57,9 +57,9 @@ ws.on("open", () => {
 
 The SDK discovers the running daemon via:
 
-- `~/Library/Application Support/AgentRunner/<instance_id>/runtime.json` (preferred)
-- `~/Library/Application Support/AgentRunner/<instance_id>/.env.local` (fallback, then `.env.production/.env.development/.env.test`)
-- `~/Library/Application Support/AgentRunner/<instance_id>/token` (Bearer token)
+- `~/.agentrunner/<instance_id>/runtime.json` (preferred)
+- `~/.agentrunner/<instance_id>/.env.local` (fallback, then `.env.production/.env.development/.env.test`)
+- `~/.agentrunner/<instance_id>/token` (Bearer token)
 
 `instance_id` discovery matches the embedded app behavior (Swift/runnerd):
 

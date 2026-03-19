@@ -3,7 +3,7 @@ import CryptoKit
 
 private let agentRunnerConfigResourceNames = ["AgentRunnerConfig"]
 private let runnerdExecutableNames = ["agent-runnerd"]
-private let appSupportDirName = "AgentRunner"
+private let agentRunnerRootDirName = ".agentrunner"
 private let portEnvKeys = ["AGENT_RUNNER_PORT"]
 
 public enum AgentRunnerError: Error {
@@ -66,10 +66,9 @@ public final class AgentRunnerDaemon {
             env["AGENT_RUNNER_INSTANCE_ID"] = instanceID
             p.environment = env
 
-            // Persist logs to App Support for debugging (Pipe is not read and may stall).
-            let appSupportDir = try resolveAppSupportDir(instanceID: instanceID)
-            try FileManager.default.createDirectory(at: appSupportDir, withIntermediateDirectories: true)
-            let logURL = appSupportDir.appendingPathComponent("runnerd.log")
+            let logsDir = try resolveLogsDir(instanceID: instanceID)
+            try FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
+            let logURL = logsDir.appendingPathComponent("runnerd.log")
             if !FileManager.default.fileExists(atPath: logURL.path) {
                 FileManager.default.createFile(atPath: logURL.path, contents: nil)
             }
@@ -391,9 +390,15 @@ private func isSafeSkillDirName(_ s: String) -> Bool {
 private func resolveAppSupportDir(instanceID: String) throws -> URL {
     let home = resolveHomeDirectory()
     return home
-        .appendingPathComponent("Library")
-        .appendingPathComponent("Application Support")
-        .appendingPathComponent(appSupportDirName)
+        .appendingPathComponent(agentRunnerRootDirName)
+        .appendingPathComponent(instanceID)
+}
+
+private func resolveLogsDir(instanceID: String) throws -> URL {
+    let home = resolveHomeDirectory()
+    return home
+        .appendingPathComponent(agentRunnerRootDirName)
+        .appendingPathComponent("logs")
         .appendingPathComponent(instanceID)
 }
 

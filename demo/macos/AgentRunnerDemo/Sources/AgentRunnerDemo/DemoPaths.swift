@@ -22,23 +22,20 @@ enum DemoPaths {
     }
 
     static func appSupportDirURL(bundle: Bundle = .main, fileManager: FileManager = .default) -> URL {
-        fileManager.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library")
-            .appendingPathComponent("Application Support")
-            .appendingPathComponent("AgentRunner")
+        rootDirURL(fileManager: fileManager)
             .appendingPathComponent(instanceID(bundle: bundle))
     }
 
     static func runnerLogURL(bundle: Bundle = .main, fileManager: FileManager = .default) -> URL {
-        appSupportDirURL(bundle: bundle, fileManager: fileManager)
+        rootDirURL(fileManager: fileManager)
+            .appendingPathComponent("logs")
+            .appendingPathComponent(instanceID(bundle: bundle))
             .appendingPathComponent("runnerd.log")
     }
 
     static func vmLogsDirURL(bundle: Bundle = .main, fileManager: FileManager = .default) -> URL {
-        fileManager.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library")
-            .appendingPathComponent("Caches")
-            .appendingPathComponent("AgentRunner")
+        rootDirURL(fileManager: fileManager)
+            .appendingPathComponent("caches")
             .appendingPathComponent("lima")
             .appendingPathComponent("agent-\(instanceID(bundle: bundle))")
     }
@@ -46,6 +43,11 @@ enum DemoPaths {
     static func skillsDirURL(bundle: Bundle = .main, fileManager: FileManager = .default) -> URL {
         appSupportDirURL(bundle: bundle, fileManager: fileManager)
             .appendingPathComponent("skills")
+    }
+
+    private static func rootDirURL(fileManager: FileManager) -> URL {
+        fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent(".agentrunner")
     }
 
     private static func deriveInstanceIDFromBundleID(_ bundleID: String) -> String {

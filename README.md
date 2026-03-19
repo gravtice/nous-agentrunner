@@ -278,19 +278,19 @@ Configuration is file-based (zero CLI parameters):
 
 ```bash
 # Priority: .env.local > .env.production > .env.development > .env.test
-~/Library/Application Support/AgentRunner/<instance_id>/.env.local
+~/.agentrunner/<instance_id>/.env.local
 ```
 
 Runner paths are per-instance (based on `<instance_id>`):
 
-- Config + state (macOS): `~/Library/Application Support/AgentRunner/<instance_id>/`
+- Config + state: `~/.agentrunner/<instance_id>/`
   - Config: `.env.local`, `.env.production`, `.env.development`, `.env.test`
   - Auth token: `token` (0600)
   - Runner Context discovery: `runtime.json` (listen addr/port, pid, started_at)
-- Logs (macOS): `~/Library/Logs/AgentRunner/<instance_id>/runnerd.log`
-- Cache/temp (macOS): `~/Library/Caches/AgentRunner/`
-  - Default temp dir (shared): `~/Library/Caches/AgentRunner/<instance_id>/SharedTmp/`
-  - Lima home (shared across instances): `~/Library/Caches/AgentRunner/lima/`
+- Logs: `~/.agentrunner/logs/<instance_id>/runnerd.log`
+- Cache/temp: `~/.agentrunner/caches/`
+  - Default temp dir (shared): `~/.agentrunner/caches/<instance_id>/SharedTmp/`
+  - Lima home (shared across instances): `~/.agentrunner/caches/lima/`
 
 You can query the exact paths via `GET /v1/system/paths`.
 
@@ -306,7 +306,7 @@ You can query the exact paths via `GET /v1/system/paths`.
 - Build fails with missing `references/lima`: run `git submodule update --init --recursive`.
 - First VM/service startup is slow: initial boot downloads VM/containerd assets. For deterministic installs, run `./scripts/macos/fetch_offline_assets.sh` before packaging.
 - Repeated macOS file permission prompts after app updates: avoid ad-hoc signing for release builds; set `AGENT_RUNNER_CODESIGN_IDENTITY` when running `./scripts/macos/package_dmg.sh`.
-- Need diagnostics/logs: check `~/Library/Logs/AgentRunner/<instance_id>/runnerd.log` and query `GET /v1/system/paths`.
+- Need diagnostics/logs: check `~/.agentrunner/logs/<instance_id>/runnerd.log` and query `GET /v1/system/paths`.
 - TypeScript SDK must run in Node/Electron main process, not browser renderer context.
 
 ## Security Model
